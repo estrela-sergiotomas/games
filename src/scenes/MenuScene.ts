@@ -154,6 +154,11 @@ export class MenuScene extends Phaser.Scene {
       }
     });
 
+    // Credits
+    this.add.text(cx, h - 32, 'Idealizado por Sergio, criado por Claude Code', {
+      fontSize: '10px', fontFamily: 'Arial', color: '#444444',
+    }).setOrigin(0.5);
+
     // Footer
     this.add.text(cx, h - 20, 'v2.0 - Offline Demo', {
       fontSize: '10px', fontFamily: 'Arial', color: '#333333',
