@@ -156,7 +156,7 @@ export class MenuScene extends Phaser.Scene {
 
     // Credits
     this.add.text(cx, h - 32, 'Idealizado por Sergio, criado por Claude Code', {
-      fontSize: '10px', fontFamily: 'Arial', color: '#444444',
+      fontSize: '11px', fontFamily: 'Arial', color: '#777777',
     }).setOrigin(0.5);
 
     // Footer
