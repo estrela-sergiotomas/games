@@ -153,9 +153,58 @@
         .history-item.high { background: #4ecdc433; color: #4ecdc4; }
         .rocket {
             position: absolute;
-            font-size: 2rem;
             pointer-events: none;
             transition: opacity 0.3s;
+            width: 50px;
+            height: 70px;
+            margin-left: -25px;
+            margin-top: -60px;
+        }
+        .rocket svg {
+            width: 100%;
+            height: 100%;
+            filter: drop-shadow(0 0 8px rgba(255, 140, 0, 0.6));
+        }
+        .rocket .flame-outer {
+            animation: flame-flicker 0.15s ease-in-out infinite alternate;
+            transform-origin: center top;
+        }
+        .rocket .flame-inner {
+            animation: flame-flicker2 0.12s ease-in-out infinite alternate;
+            transform-origin: center top;
+        }
+        @keyframes flame-flicker {
+            0% { transform: scaleX(0.85) scaleY(0.9); }
+            100% { transform: scaleX(1.15) scaleY(1.1); }
+        }
+        @keyframes flame-flicker2 {
+            0% { transform: scaleX(1.1) scaleY(1.1); }
+            100% { transform: scaleX(0.8) scaleY(0.85); }
+        }
+        .rocket.exploded svg { display: none; }
+        .rocket .explosion {
+            display: none;
+            position: absolute;
+            top: -10px;
+            left: -15px;
+            width: 80px;
+            height: 80px;
+        }
+        .rocket.exploded .explosion { display: block; }
+        .explosion .exp-ring {
+            animation: explode-ring 0.6s ease-out forwards;
+        }
+        .explosion .exp-core {
+            animation: explode-core 0.5s ease-out forwards;
+        }
+        @keyframes explode-ring {
+            0% { r: 5; opacity: 1; }
+            100% { r: 35; opacity: 0; }
+        }
+        @keyframes explode-core {
+            0% { r: 12; opacity: 1; }
+            50% { r: 20; opacity: 0.8; }
+            100% { r: 8; opacity: 0; }
         }
         .instructions {
             margin-top: 25px;
@@ -298,7 +347,30 @@
         <canvas id="canvas" width="700" height="350"></canvas>
         <div class="multiplier-display" id="multiplier">1.00x</div>
         <div class="status-text" id="status">Faça sua aposta e clique em JOGAR</div>
-        <div class="rocket" id="rocket">🚀</div>
+        <div class="rocket" id="rocket">
+            <svg viewBox="0 0 50 70" xmlns="http://www.w3.org/2000/svg">
+                <!-- Flames -->
+                <ellipse class="flame-outer" cx="25" cy="58" rx="10" ry="12" fill="#ff6600" opacity="0.9"/>
+                <ellipse class="flame-inner" cx="25" cy="56" rx="6" ry="9" fill="#ffcc00"/>
+                <ellipse cx="25" cy="54" rx="3" ry="5" fill="#fff4cc" opacity="0.8"/>
+                <!-- Rocket body -->
+                <path d="M25 2 C25 2, 15 18, 15 35 L15 45 L35 45 L35 35 C35 18, 25 2, 25 2Z" fill="#e8e8e8" stroke="#ccc" stroke-width="0.5"/>
+                <!-- Nose cone -->
+                <path d="M25 2 C25 2, 19 14, 18 22 L32 22 C31 14, 25 2, 25 2Z" fill="#ff4757"/>
+                <!-- Window -->
+                <circle cx="25" cy="28" r="5" fill="#1a1a3e" stroke="#4ecdc4" stroke-width="1.5"/>
+                <circle cx="23.5" cy="26.5" r="1.5" fill="rgba(78,205,196,0.4)"/>
+                <!-- Fins -->
+                <path d="M15 38 L8 48 L15 46Z" fill="#ff4757" stroke="#cc3344" stroke-width="0.3"/>
+                <path d="M35 38 L42 48 L35 46Z" fill="#ff4757" stroke="#cc3344" stroke-width="0.3"/>
+                <rect x="22" y="40" width="6" height="6" rx="1" fill="#4ecdc4" opacity="0.6"/>
+            </svg>
+            <svg class="explosion" viewBox="0 0 80 80" xmlns="http://www.w3.org/2000/svg">
+                <circle class="exp-core" cx="40" cy="40" r="12" fill="#ff4757"/>
+                <circle class="exp-ring" cx="40" cy="40" r="5" fill="none" stroke="#ff6600" stroke-width="3" opacity="0.8"/>
+                <circle class="exp-ring" cx="40" cy="40" r="5" fill="none" stroke="#ffd700" stroke-width="2" opacity="0.6" style="animation-delay:0.1s"/>
+            </svg>
+        </div>
     </div>
 
     <div class="controls">
@@ -571,11 +643,9 @@
 
             // Crash explosion
             if (crashed) {
-                rocketEl.textContent = '💥';
-                rocketEl.style.fontSize = '3rem';
+                rocketEl.classList.add('exploded');
             } else {
-                rocketEl.textContent = '🚀';
-                rocketEl.style.fontSize = '2rem';
+                rocketEl.classList.remove('exploded');
             }
         }
 
