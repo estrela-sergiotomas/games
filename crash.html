@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Crash Game</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background: #0f0f23;
+            color: #fff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            color: #e0e0e0;
+        }
+        .balance {
+            font-size: 1.2rem;
+            color: #aaa;
+            margin-bottom: 20px;
+        }
+        .balance span {
+            color: #4ecdc4;
+            font-weight: bold;
+        }
+        .game-container {
+            position: relative;
+            width: 700px;
+            max-width: 95vw;
+        }
+        canvas {
+            width: 100%;
+            height: 350px;
+            background: #1a1a3e;
+            border-radius: 12px;
+            border: 1px solid #2a2a5e;
+        }
+        .multiplier-display {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 4rem;
+            font-weight: bold;
+            color: #4ecdc4;
+            text-shadow: 0 0 30px rgba(78, 205, 196, 0.5);
+            pointer-events: none;
+            transition: color 0.1s;
+        }
+        .multiplier-display.crashed {
+            color: #ff4757;
+            text-shadow: 0 0 30px rgba(255, 71, 87, 0.5);
+        }
+        .multiplier-display.cashed-out {
+            color: #ffd700;
+            text-shadow: 0 0 30px rgba(255, 215, 0, 0.5);
+        }
+        .status-text {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 1rem;
+            color: #aaa;
+            pointer-events: none;
+        }
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-top: 20px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .bet-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        .bet-group label {
+            font-size: 0.85rem;
+            color: #888;
+        }
+        .bet-group input {
+            width: 120px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #2a2a5e;
+            background: #1a1a3e;
+            color: #fff;
+            font-size: 1.1rem;
+            text-align: center;
+            outline: none;
+        }
+        .bet-group input:focus {
+            border-color: #4ecdc4;
+        }
+        .btn {
+            padding: 14px 32px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1.1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .btn-play {
+            background: linear-gradient(135deg, #4ecdc4, #44a08d);
+            color: #fff;
+        }
+        .btn-play:hover { transform: scale(1.05); }
+        .btn-play:disabled {
+            background: #333;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .btn-cashout {
+            background: linear-gradient(135deg, #ffd700, #f39c12);
+            color: #1a1a2e;
+        }
+        .btn-cashout:hover { transform: scale(1.05); }
+        .btn-cashout:disabled {
+            background: #333;
+            color: #666;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .history {
+            margin-top: 25px;
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            justify-content: center;
+            max-width: 700px;
+        }
+        .history-item {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        .history-item.low { background: #ff475733; color: #ff4757; }
+        .history-item.mid { background: #ffd70033; color: #ffd700; }
+        .history-item.high { background: #4ecdc433; color: #4ecdc4; }
+        .rocket {
+            position: absolute;
+            font-size: 2rem;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+        .instructions {
+            margin-top: 25px;
+            color: #555;
+            font-size: 0.85rem;
+            text-align: center;
+            max-width: 500px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <h1>Crash Game</h1>
+    <p class="balance">Saldo: <span id="balance">1000.00</span> moedas</p>
+
+    <div class="game-container">
+        <canvas id="canvas" width="700" height="350"></canvas>
+        <div class="multiplier-display" id="multiplier">1.00x</div>
+        <div class="status-text" id="status">Faça sua aposta e clique em JOGAR</div>
+        <div class="rocket" id="rocket">🚀</div>
+    </div>
+
+    <div class="controls">
+        <div class="bet-group">
+            <label>Aposta</label>
+            <input type="number" id="betAmount" value="10" min="1" step="1">
+        </div>
+        <button class="btn btn-play" id="btnPlay" onclick="startGame()">Jogar</button>
+        <button class="btn btn-cashout" id="btnCashout" onclick="cashOut()" disabled>Cash Out</button>
+    </div>
+
+    <div class="history" id="history"></div>
+
+    <p class="instructions">
+        Clique em <strong>JOGAR</strong> para iniciar. O multiplicador sobe — clique em
+        <strong>CASH OUT</strong> antes que ele quebre! Quanto mais esperar, maior o prêmio,
+        mas cuidado: pode crashar a qualquer momento.
+    </p>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const multiplierEl = document.getElementById('multiplier');
+        const statusEl = document.getElementById('status');
+        const balanceEl = document.getElementById('balance');
+        const btnPlay = document.getElementById('btnPlay');
+        const btnCashout = document.getElementById('btnCashout');
+        const betInput = document.getElementById('betAmount');
+        const historyEl = document.getElementById('history');
+        const rocketEl = document.getElementById('rocket');
+
+        let balance = 1000;
+        let currentMultiplier = 1;
+        let crashPoint = 1;
+        let isRunning = false;
+        let hasCashedOut = false;
+        let betAmount = 0;
+        let startTime = 0;
+        let animationId = null;
+        let points = [];
+        let history = [];
+
+        function generateCrashPoint() {
+            // Provably fair-ish crash point generation
+            const r = Math.random();
+            // 3% chance of instant crash (1.00x)
+            if (r < 0.03) return 1.00;
+            // House edge ~4%
+            return Math.max(1, Math.floor((0.96 / (1 - r)) * 100) / 100);
+        }
+
+        function startGame() {
+            betAmount = parseFloat(betInput.value);
+            if (isNaN(betAmount) || betAmount <= 0) return;
+            if (betAmount > balance) {
+                statusEl.textContent = 'Saldo insuficiente!';
+                return;
+            }
+
+            balance -= betAmount;
+            balanceEl.textContent = balance.toFixed(2);
+
+            crashPoint = generateCrashPoint();
+            currentMultiplier = 1;
+            isRunning = true;
+            hasCashedOut = false;
+            points = [];
+            startTime = performance.now();
+
+            multiplierEl.className = 'multiplier-display';
+            btnPlay.disabled = true;
+            btnCashout.disabled = false;
+            betInput.disabled = true;
+            statusEl.textContent = 'Subindo...';
+            rocketEl.style.opacity = '1';
+
+            animate();
+        }
+
+        function cashOut() {
+            if (!isRunning || hasCashedOut) return;
+            hasCashedOut = true;
+
+            const winnings = betAmount * currentMultiplier;
+            balance += winnings;
+            balanceEl.textContent = balance.toFixed(2);
+
+            multiplierEl.className = 'multiplier-display cashed-out';
+            statusEl.textContent = `Cash out! +${winnings.toFixed(2)} moedas`;
+            btnCashout.disabled = true;
+        }
+
+        function endGame() {
+            isRunning = false;
+            btnPlay.disabled = false;
+            btnCashout.disabled = true;
+            betInput.disabled = false;
+            rocketEl.style.opacity = '0';
+
+            if (!hasCashedOut) {
+                multiplierEl.textContent = `${crashPoint.toFixed(2)}x`;
+                multiplierEl.className = 'multiplier-display crashed';
+                statusEl.textContent = `Crashou em ${crashPoint.toFixed(2)}x! Você perdeu ${betAmount.toFixed(2)} moedas`;
+            }
+
+            // Add to history
+            history.unshift(crashPoint);
+            if (history.length > 15) history.pop();
+            renderHistory();
+
+            cancelAnimationFrame(animationId);
+        }
+
+        function renderHistory() {
+            historyEl.innerHTML = history.map(h => {
+                let cls = 'low';
+                if (h >= 2 && h < 5) cls = 'mid';
+                else if (h >= 5) cls = 'high';
+                return `<span class="history-item ${cls}">${h.toFixed(2)}x</span>`;
+            }).join('');
+        }
+
+        function animate() {
+            const elapsed = (performance.now() - startTime) / 1000;
+
+            // Multiplier grows exponentially
+            currentMultiplier = Math.pow(Math.E, 0.15 * elapsed);
+            currentMultiplier = Math.floor(currentMultiplier * 100) / 100;
+
+            if (currentMultiplier >= crashPoint) {
+                currentMultiplier = crashPoint;
+                drawGraph(elapsed, true);
+                endGame();
+                return;
+            }
+
+            multiplierEl.textContent = `${currentMultiplier.toFixed(2)}x`;
+
+            // Color shift based on multiplier
+            if (currentMultiplier >= 5) {
+                multiplierEl.style.color = '#ff6b6b';
+            } else if (currentMultiplier >= 2) {
+                multiplierEl.style.color = '#ffd700';
+            } else {
+                multiplierEl.style.color = '#4ecdc4';
+            }
+
+            drawGraph(elapsed, false);
+            animationId = requestAnimationFrame(animate);
+        }
+
+        function drawGraph(elapsed, crashed) {
+            const w = canvas.width;
+            const h = canvas.height;
+            ctx.clearRect(0, 0, w, h);
+
+            // Grid
+            ctx.strokeStyle = '#2a2a5e';
+            ctx.lineWidth = 0.5;
+            for (let i = 0; i < 10; i++) {
+                const y = (h / 10) * i;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(w, y);
+                ctx.stroke();
+            }
+
+            // Calculate points for curve
+            const maxTime = Math.max(elapsed + 1, 5);
+            const maxMult = Math.max(currentMultiplier + 0.5, 3);
+
+            // Draw curve
+            ctx.beginPath();
+            ctx.strokeStyle = crashed ? '#ff4757' : '#4ecdc4';
+            ctx.lineWidth = 3;
+            ctx.shadowColor = crashed ? '#ff4757' : '#4ecdc4';
+            ctx.shadowBlur = 10;
+
+            const steps = Math.min(Math.floor(elapsed * 60), 2000);
+            for (let i = 0; i <= steps; i++) {
+                const t = (i / 60);
+                const mult = Math.pow(Math.E, 0.15 * t);
+                const x = (t / maxTime) * w;
+                const y = h - ((mult - 1) / (maxMult - 1)) * (h - 40) - 20;
+
+                if (i === 0) ctx.moveTo(x, y);
+                else ctx.lineTo(x, y);
+            }
+            ctx.stroke();
+            ctx.shadowBlur = 0;
+
+            // Fill under curve
+            const lastT = steps / 60;
+            const lastX = (lastT / maxTime) * w;
+            const lastY = h - ((currentMultiplier - 1) / (maxMult - 1)) * (h - 40) - 20;
+
+            ctx.lineTo(lastX, h);
+            ctx.lineTo(0, h);
+            ctx.closePath();
+            const grad = ctx.createLinearGradient(0, 0, 0, h);
+            if (crashed) {
+                grad.addColorStop(0, 'rgba(255, 71, 87, 0.3)');
+                grad.addColorStop(1, 'rgba(255, 71, 87, 0)');
+            } else {
+                grad.addColorStop(0, 'rgba(78, 205, 196, 0.3)');
+                grad.addColorStop(1, 'rgba(78, 205, 196, 0)');
+            }
+            ctx.fillStyle = grad;
+            ctx.fill();
+
+            // Rocket position
+            rocketEl.style.left = `${(lastX / w) * 100}%`;
+            rocketEl.style.top = `${(lastY / h) * 100}%`;
+
+            // Crash explosion
+            if (crashed) {
+                rocketEl.textContent = '💥';
+                rocketEl.style.fontSize = '3rem';
+            } else {
+                rocketEl.textContent = '🚀';
+                rocketEl.style.fontSize = '2rem';
+            }
+        }
+
+        // Keyboard shortcut: space to cash out
+        document.addEventListener('keydown', (e) => {
+            if (e.code === 'Space' && isRunning && !hasCashedOut) {
+                e.preventDefault();
+                cashOut();
+            }
+        });
+
+        // Initial draw
+        drawGraph(0, false);
+    </script>
+</body>
+</html>
