@@ -83,29 +83,27 @@ export class MenuScene extends Phaser.Scene {
     this.tweens.add({ targets: flame, scaleX: { from: 1.8, to: 2.8 }, alpha: { from: 0.6, to: 1 }, duration: 100, yoyo: true, repeat: -1 });
 
     // Title
-    this.add.text(cx + 2, h * 0.06 + 2, 'CRASH', {
-      fontSize: '52px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
+    this.add.text(cx + 2, h * 0.06 + 2, 'AVIATORE', {
+      fontSize: '48px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setAlpha(0.3);
-    this.add.text(cx, h * 0.06, 'CRASH', {
-      fontSize: '52px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5, 0);
-
-    this.add.text(cx + 2, h * 0.06 + 55, 'GAME', {
-      fontSize: '42px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
-    }).setOrigin(0.5, 0).setAlpha(0.3);
-    this.add.text(cx, h * 0.06 + 53, 'GAME', {
-      fontSize: '42px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
+    this.add.text(cx, h * 0.06, 'AVIATORE', {
+      fontSize: '48px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
     // Subtitle
-    this.add.text(cx, h * 0.06 + 105, 'ESTILO AVIATOR', {
+    this.add.text(cx, h * 0.06 + 60, 'CRASH GAME', {
+      fontSize: '22px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    // Tagline subtitle
+    this.add.text(cx, h * 0.06 + 95, 'Estilo Aviator', {
       fontSize: '14px', fontFamily: 'Arial', color: '#888888',
     }).setOrigin(0.5, 0);
 
     // Decorative line
     const decLine = this.add.graphics();
     decLine.lineStyle(1, COLORS.CYAN, 0.5);
-    decLine.lineBetween(cx - 80, h * 0.06 + 125, cx + 80, h * 0.06 + 125);
+    decLine.lineBetween(cx - 80, h * 0.06 + 115, cx + 80, h * 0.06 + 115);
 
     // Tagline
     this.add.text(cx, h * 0.48, 'Aposte, voe e faca cash out!', {

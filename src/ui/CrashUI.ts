@@ -44,7 +44,7 @@ export class CrashUI {
     topBar.fillStyle(COLORS.BG_PANEL, 0.8);
     topBar.fillRect(0, 0, w, 42);
 
-    this.add.text(15, 12, 'CRASH', {
+    this.add.text(15, 12, 'AVIATORE', {
       fontSize: '18px', fontFamily: 'Arial', color: '#e0e0e0', fontStyle: 'bold',
     });
 
