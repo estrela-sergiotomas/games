@@ -22,119 +22,119 @@ export class MenuScene extends Phaser.Scene {
     // 80s perspective grid floor
     const grid = this.add.graphics();
     grid.lineStyle(1, COLORS.CYAN, 0.15);
-    for (let i = 0; i < 12; i++) {
-      const y = h * 0.6 + i * 15;
+    for (let i = 0; i < 15; i++) {
+      const y = h * 0.55 + i * 18;
       grid.lineBetween(0, y, w, y);
     }
     for (let i = -6; i <= 6; i++) {
-      grid.lineBetween(cx + i * 30, h * 0.6, cx + i * 120, h);
+      grid.lineBetween(cx + i * 20, h * 0.55, cx + i * 80, h);
     }
 
     // Stars
-    for (let i = 0; i < 100; i++) {
+    for (let i = 0; i < 80; i++) {
       const x = Phaser.Math.Between(0, w);
-      const y = Phaser.Math.Between(0, h * 0.6);
+      const y = Phaser.Math.Between(0, h * 0.55);
       const size = Phaser.Math.FloatBetween(0.5, 2.5);
       const star = this.add.circle(x, y, size, 0xffffff, Phaser.Math.FloatBetween(0.15, 0.8));
       this.tweens.add({
-        targets: star,
-        alpha: Phaser.Math.FloatBetween(0.05, 0.2),
-        duration: Phaser.Math.Between(800, 2500),
-        yoyo: true,
-        repeat: -1,
+        targets: star, alpha: Phaser.Math.FloatBetween(0.05, 0.2),
+        duration: Phaser.Math.Between(800, 2500), yoyo: true, repeat: -1,
       });
     }
 
     // Shooting stars
     this.time.addEvent({
-      delay: 3000,
-      loop: true,
+      delay: 3000, loop: true,
       callback: () => {
-        const sx = Phaser.Math.Between(100, w - 100);
+        const sx = Phaser.Math.Between(50, w - 50);
         const shootingStar = this.add.circle(sx, 0, 2, 0xffffff, 0.9);
         this.tweens.add({
-          targets: shootingStar,
-          x: sx + 150, y: h * 0.4, alpha: 0,
-          duration: 800, ease: 'Power2',
-          onComplete: () => shootingStar.destroy(),
+          targets: shootingStar, x: sx + 80, y: h * 0.35, alpha: 0,
+          duration: 800, ease: 'Power2', onComplete: () => shootingStar.destroy(),
         });
       },
     });
 
-    // Horizon glow line
+    // Horizon glow
     const horizonGlow = this.add.graphics();
     horizonGlow.lineStyle(2, COLORS.CYAN, 0.4);
-    horizonGlow.lineBetween(0, h * 0.6, w, h * 0.6);
+    horizonGlow.lineBetween(0, h * 0.55, w, h * 0.55);
 
-    // Retro sun at horizon
+    // Retro sun
     const sun = this.add.graphics();
     sun.fillStyle(0xff4757, 0.15);
-    sun.fillCircle(cx, h * 0.6, 80);
+    sun.fillCircle(cx, h * 0.55, 60);
     sun.fillStyle(0xff4757, 0.25);
-    sun.fillCircle(cx, h * 0.6, 50);
+    sun.fillCircle(cx, h * 0.55, 40);
     sun.fillStyle(0xff6b6b, 0.35);
-    sun.fillCircle(cx, h * 0.6, 30);
-    for (let i = 0; i < 6; i++) {
+    sun.fillCircle(cx, h * 0.55, 22);
+    for (let i = 0; i < 5; i++) {
       sun.lineStyle(2, 0x0f0f23, 0.6);
-      sun.lineBetween(cx - 50, h * 0.6 - 25 + i * 10, cx + 50, h * 0.6 - 25 + i * 10);
+      sun.lineBetween(cx - 40, h * 0.55 - 20 + i * 10, cx + 40, h * 0.55 - 20 + i * 10);
     }
 
     // Animated plane
-    const plane = this.add.image(cx + 60, h * 0.35, 'plane').setScale(2.5);
-    this.tweens.add({ targets: plane, y: h * 0.32, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    const plane = this.add.image(cx + 40, h * 0.32, 'plane').setScale(2.2);
+    this.tweens.add({ targets: plane, y: h * 0.29, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
     this.tweens.add({ targets: plane, angle: -5, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
 
-    // Flame behind plane
-    const flame = this.add.image(cx - 5, h * 0.35, 'flame').setScale(2.5).setAlpha(0.8);
-    this.tweens.add({ targets: flame, y: h * 0.32, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.tweens.add({ targets: flame, scaleX: { from: 2, to: 3 }, alpha: { from: 0.6, to: 1 }, duration: 100, yoyo: true, repeat: -1 });
+    const flame = this.add.image(cx - 10, h * 0.32, 'flame').setScale(2.2).setAlpha(0.8);
+    this.tweens.add({ targets: flame, y: h * 0.29, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+    this.tweens.add({ targets: flame, scaleX: { from: 1.8, to: 2.8 }, alpha: { from: 0.6, to: 1 }, duration: 100, yoyo: true, repeat: -1 });
 
-    // Title shadow + title
-    this.add.text(cx + 2, h * 0.08 + 2, 'CRASH GAME', {
+    // Title
+    this.add.text(cx + 2, h * 0.06 + 2, 'CRASH', {
       fontSize: '52px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setAlpha(0.3);
-    this.add.text(cx, h * 0.08, 'CRASH GAME', {
+    this.add.text(cx, h * 0.06, 'CRASH', {
       fontSize: '52px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
+    this.add.text(cx + 2, h * 0.06 + 55, 'GAME', {
+      fontSize: '42px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
+    }).setOrigin(0.5, 0).setAlpha(0.3);
+    this.add.text(cx, h * 0.06 + 53, 'GAME', {
+      fontSize: '42px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
     // Subtitle
-    this.add.text(cx, h * 0.08 + 60, 'ESTILO AVIATOR', {
-      fontSize: '16px', fontFamily: 'Arial', color: '#4ecdc4',
+    this.add.text(cx, h * 0.06 + 105, 'ESTILO AVIATOR', {
+      fontSize: '14px', fontFamily: 'Arial', color: '#888888',
     }).setOrigin(0.5, 0);
 
     // Decorative line
     const decLine = this.add.graphics();
     decLine.lineStyle(1, COLORS.CYAN, 0.5);
-    decLine.lineBetween(cx - 100, h * 0.08 + 85, cx + 100, h * 0.08 + 85);
+    decLine.lineBetween(cx - 80, h * 0.06 + 125, cx + 80, h * 0.06 + 125);
 
     // Tagline
-    this.add.text(cx, h * 0.55, 'Aposte, voe e faca cash out antes do crash!', {
+    this.add.text(cx, h * 0.48, 'Aposte, voe e faca cash out!', {
       fontSize: '14px', fontFamily: 'Arial', color: '#666666',
     }).setOrigin(0.5);
 
-    // === PLAY BUTTON ===
-    const btnY = h * 0.7;
-    const btnW = 220;
-    const btnH2 = 55;
+    // === PLAY BUTTON - BIG ===
+    const btnY = h * 0.68;
+    const btnW = w - 60;
+    const btnH2 = 65;
 
     const btnGlow = this.add.graphics();
     btnGlow.fillStyle(COLORS.CYAN, 0.1);
-    btnGlow.fillRoundedRect(cx - btnW / 2 - 4, btnY - 4, btnW + 8, btnH2 + 8, 14);
+    btnGlow.fillRoundedRect(cx - btnW / 2 - 4, btnY - 4, btnW + 8, btnH2 + 8, 16);
 
     const btnBg = this.add.graphics();
     btnBg.fillStyle(COLORS.CYAN);
-    btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 10);
+    btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 12);
 
     this.add.text(cx, btnY + btnH2 / 2, 'JOGAR', {
-      fontSize: '24px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+      fontSize: '28px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
 
     const playHit = this.add.rectangle(cx, btnY + btnH2 / 2, btnW, btnH2).setInteractive({ useHandCursor: true });
     playHit.on('pointerover', () => {
-      btnBg.clear(); btnBg.fillStyle(0x44a08d); btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 10);
+      btnBg.clear(); btnBg.fillStyle(0x44a08d); btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 12);
     });
     playHit.on('pointerout', () => {
-      btnBg.clear(); btnBg.fillStyle(COLORS.CYAN); btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 10);
+      btnBg.clear(); btnBg.fillStyle(COLORS.CYAN); btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 12);
     });
     playHit.on('pointerdown', () => {
       if (!this.musicOn) { synthMusic.start(); this.musicOn = true; }
@@ -143,10 +143,10 @@ export class MenuScene extends Phaser.Scene {
 
     this.tweens.add({ targets: btnGlow, alpha: { from: 0.3, to: 1 }, duration: 1200, yoyo: true, repeat: -1 });
 
-    // === MUSIC TOGGLE ===
-    const musicText = this.add.text(w - 20, h - 25, this.musicOn ? 'MUSICA: ON' : 'MUSICA: OFF', {
-      fontSize: '12px', fontFamily: 'Arial', color: '#555555',
-    }).setOrigin(1, 0.5).setInteractive({ useHandCursor: true });
+    // Music toggle
+    const musicText = this.add.text(cx, h * 0.83, this.musicOn ? 'MUSICA: ON' : 'MUSICA: OFF', {
+      fontSize: '14px', fontFamily: 'Arial', color: '#555555',
+    }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
     musicText.on('pointerdown', () => {
       if (this.musicOn) {
@@ -157,8 +157,8 @@ export class MenuScene extends Phaser.Scene {
     });
 
     // Footer
-    this.add.text(cx, h - 25, 'v1.0 - Offline Demo', {
-      fontSize: '11px', fontFamily: 'Arial', color: '#333333',
+    this.add.text(cx, h - 20, 'v2.0 - Offline Demo', {
+      fontSize: '10px', fontFamily: 'Arial', color: '#333333',
     }).setOrigin(0.5);
   }
 }

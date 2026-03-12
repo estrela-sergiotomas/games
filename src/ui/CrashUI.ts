@@ -2,6 +2,18 @@ import Phaser from 'phaser';
 import { COLORS, GAME_CONFIG } from '../utils/constants';
 import { GameState } from '../utils/GameState';
 
+/**
+ * Portrait mobile-first UI layout for CrashScene.
+ * Layout (top to bottom):
+ *   [Balance bar]        y=0-40
+ *   [Mascot area]        y=40-140  (managed by CrashScene)
+ *   [Graph area]         y=150-440
+ *   [Multiplier overlay] centered in graph
+ *   [History row]        y=450-480
+ *   [Bet controls]       y=490-560
+ *   [Action buttons]     y=570-650
+ *   [Bottom bar]         y=660-780
+ */
 export class CrashUI {
   private scene: Phaser.Scene;
   private balanceText!: Phaser.GameObjects.Text;
@@ -10,17 +22,11 @@ export class CrashUI {
   private betText!: Phaser.GameObjects.Text;
   private historyTexts: Phaser.GameObjects.Text[] = [];
 
-  // Buttons
   private playBtn!: Phaser.GameObjects.Container;
   private cashoutBtn!: Phaser.GameObjects.Container;
-  private betUpBtn!: Phaser.GameObjects.Container;
-  private betDownBtn!: Phaser.GameObjects.Container;
-  private statsBtn!: Phaser.GameObjects.Container;
-  private settingsBtn!: Phaser.GameObjects.Container;
 
   private betAmount: number = GAME_CONFIG.DEFAULT_BET;
 
-  // Callbacks
   onPlay?: () => void;
   onCashOut?: () => void;
   onOpenStats?: () => void;
@@ -33,82 +39,125 @@ export class CrashUI {
   create(): void {
     const w = GAME_CONFIG.WIDTH;
 
-    // Top bar
-    this.add.text(20, 15, 'CRASH GAME', {
-      fontSize: '20px', fontFamily: 'Arial', color: '#e0e0e0', fontStyle: 'bold',
+    // === TOP BAR (balance) ===
+    const topBar = this.scene.add.graphics();
+    topBar.fillStyle(COLORS.BG_PANEL, 0.8);
+    topBar.fillRect(0, 0, w, 42);
+
+    this.add.text(15, 12, 'CRASH', {
+      fontSize: '18px', fontFamily: 'Arial', color: '#e0e0e0', fontStyle: 'bold',
     });
 
-    this.balanceText = this.add.text(w - 20, 15, `Saldo: ${GameState.balance.toFixed(2)}`, {
-      fontSize: '16px', fontFamily: 'Arial', color: '#4ecdc4',
+    this.balanceText = this.add.text(w - 15, 12, `${GameState.balance.toFixed(0)} coins`, {
+      fontSize: '18px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
     }).setOrigin(1, 0);
 
-    // Graph area background
+    // === GRAPH AREA ===
     const graphBg = this.scene.add.graphics();
-    graphBg.fillStyle(COLORS.BG_PANEL, 0.6);
-    graphBg.fillRoundedRect(30, 50, w - 60, 340, 12);
-    graphBg.lineStyle(1, COLORS.BORDER);
-    graphBg.strokeRoundedRect(30, 50, w - 60, 340, 12);
+    graphBg.fillStyle(COLORS.BG_PANEL, 0.5);
+    graphBg.fillRoundedRect(10, 150, w - 20, 290, 12);
+    graphBg.lineStyle(1, COLORS.BORDER, 0.5);
+    graphBg.strokeRoundedRect(10, 150, w - 20, 290, 12);
 
-    // Multiplier display (center of graph)
-    this.multiplierText = this.add.text(w / 2, 200, '1.00x', {
-      fontSize: '64px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
-    }).setOrigin(0.5).setAlpha(0.9);
+    // Multiplier (centered in graph)
+    this.multiplierText = this.add.text(w / 2, 290, '1.00x', {
+      fontSize: '56px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
+    }).setOrigin(0.5).setAlpha(0.85);
 
-    // Status text
-    this.statusText = this.add.text(w / 2, 70, 'Faça sua aposta e clique em JOGAR', {
-      fontSize: '14px', fontFamily: 'Arial', color: '#888888',
+    // Status text above graph
+    this.statusText = this.add.text(w / 2, 155, 'Faca sua aposta', {
+      fontSize: '13px', fontFamily: 'Arial', color: '#888888',
+    }).setOrigin(0.5, 0);
+
+    // === BET CONTROLS ===
+    this.createBetControls();
+
+    // === ACTION BUTTONS ===
+    this.createActionButtons();
+
+    // === BOTTOM BAR ===
+    this.createBottomBar();
+  }
+
+  private createBetControls(): void {
+    const w = GAME_CONFIG.WIDTH;
+    const y = 490;
+
+    this.add.text(w / 2, y, 'APOSTA', {
+      fontSize: '12px', fontFamily: 'Arial', color: '#666666',
     }).setOrigin(0.5);
 
-    // Controls bar
-    this.createControls();
-  }
+    // Bet row: [-] [amount] [+]
+    const rowY = y + 22;
+    const btnSize = 44;
 
-  private createControls(): void {
-    const y = 430;
-    const w = GAME_CONFIG.WIDTH;
+    // Minus
+    this.createButton(w / 2 - 80, rowY, btnSize, btnSize, '-', COLORS.BORDER, () => this.changeBet(-5), '20px');
 
-    // Bet display
-    this.add.text(40, y, 'APOSTA', { fontSize: '11px', fontFamily: 'Arial', color: '#888888' });
+    // Bet amount display
+    const betBg = this.scene.add.graphics();
+    betBg.fillStyle(COLORS.BG_DARK);
+    betBg.fillRoundedRect(w / 2 - 30, rowY, 60, btnSize, 8);
+    this.betText = this.add.text(w / 2, rowY + btnSize / 2, this.betAmount.toString(), {
+      fontSize: '22px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
 
-    this.betDownBtn = this.createButton(40, y + 18, 30, 30, '-', COLORS.BORDER, () => this.changeBet(-5));
-    this.betText = this.add.text(90, y + 18, this.betAmount.toString(), {
-      fontSize: '18px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    // Plus
+    this.createButton(w / 2 + 36, rowY, btnSize, btnSize, '+', COLORS.BORDER, () => this.changeBet(5), '20px');
+
+    // Quick bet buttons
+    const quickY = rowY + btnSize + 8;
+    const quickBets = [5, 10, 25, 50, 100];
+    const qw = (w - 30) / quickBets.length;
+    quickBets.forEach((amt, i) => {
+      this.createButton(10 + i * qw + 2, quickY, qw - 4, 28, amt.toString(), 0x2a2a5e, () => {
+        this.betAmount = amt;
+        this.betText.setText(amt.toString());
+      }, '12px');
     });
-    this.betUpBtn = this.createButton(140, y + 18, 30, 30, '+', COLORS.BORDER, () => this.changeBet(5));
-
-    // Play button
-    this.playBtn = this.createButton(200, y + 10, 120, 40, 'JOGAR', COLORS.CYAN, () => this.onPlay?.());
-
-    // Cashout button
-    this.cashoutBtn = this.createButton(340, y + 10, 140, 40, 'CASH OUT', COLORS.GOLD, () => this.onCashOut?.());
-    this.setCashoutEnabled(false);
-
-    // Stats button
-    this.statsBtn = this.createButton(510, y + 10, 80, 40, 'STATS', COLORS.PURPLE, () => this.onOpenStats?.());
-
-    // Settings button
-    this.settingsBtn = this.createButton(610, y + 10, 50, 40, '⚙', COLORS.BORDER, () => this.onOpenSettings?.());
-
-    // Back to menu
-    this.createButton(680, y + 10, 80, 40, 'MENU', 0x555555, () => this.scene.scene.start('MenuScene'));
   }
 
-  private createButton(x: number, y: number, w: number, h: number, label: string, color: number, onClick: () => void): Phaser.GameObjects.Container {
+  private createActionButtons(): void {
+    const w = GAME_CONFIG.WIDTH;
+    const y = 610;
+    const gap = 10;
+    const btnH = 56;
+    const halfW = (w - 30) / 2;
+
+    // JOGAR
+    this.playBtn = this.createButton(10, y, halfW, btnH, 'JOGAR', COLORS.CYAN, () => this.onPlay?.(), '20px');
+
+    // CASH OUT
+    this.cashoutBtn = this.createButton(10 + halfW + gap, y, halfW, btnH, 'CASH OUT', COLORS.GOLD, () => this.onCashOut?.(), '18px');
+    this.setCashoutEnabled(false);
+  }
+
+  private createBottomBar(): void {
+    const w = GAME_CONFIG.WIDTH;
+    const y = 680;
+    const btnW = (w - 40) / 3;
+    const btnH = 36;
+
+    this.createButton(10, y, btnW, btnH, 'STATS', COLORS.PURPLE, () => this.onOpenStats?.(), '13px');
+    this.createButton(15 + btnW, y, btnW, btnH, 'CONFIG', COLORS.BORDER, () => this.onOpenSettings?.(), '13px');
+    this.createButton(20 + btnW * 2, y, btnW, btnH, 'MENU', 0x444444, () => this.scene.scene.start('MenuScene'), '13px');
+  }
+
+  private createButton(x: number, y: number, bw: number, bh: number, label: string, color: number, onClick: () => void, fontSize = '14px'): Phaser.GameObjects.Container {
     const bg = this.scene.add.graphics();
     bg.fillStyle(color);
-    bg.fillRoundedRect(0, 0, w, h, 6);
+    bg.fillRoundedRect(0, 0, bw, bh, 8);
 
-    const text = this.scene.add.text(w / 2, h / 2, label, {
-      fontSize: '14px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    const text = this.scene.add.text(bw / 2, bh / 2, label, {
+      fontSize, fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5);
 
-    const hitArea = this.scene.add.rectangle(w / 2, h / 2, w, h).setInteractive({ useHandCursor: true });
+    const hitArea = this.scene.add.rectangle(bw / 2, bh / 2, bw, bh).setInteractive({ useHandCursor: true });
     hitArea.on('pointerdown', onClick);
-    hitArea.on('pointerover', () => { bg.clear(); bg.fillStyle(color, 0.7); bg.fillRoundedRect(0, 0, w, h, 6); });
-    hitArea.on('pointerout', () => { bg.clear(); bg.fillStyle(color); bg.fillRoundedRect(0, 0, w, h, 6); });
+    hitArea.on('pointerover', () => { bg.clear(); bg.fillStyle(color, 0.7); bg.fillRoundedRect(0, 0, bw, bh, 8); });
+    hitArea.on('pointerout', () => { bg.clear(); bg.fillStyle(color); bg.fillRoundedRect(0, 0, bw, bh, 8); });
 
-    const container = this.scene.add.container(x, y, [bg, text, hitArea]);
-    return container;
+    return this.scene.add.container(x, y, [bg, text, hitArea]);
   }
 
   private changeBet(delta: number): void {
@@ -129,21 +178,16 @@ export class CrashUI {
 
   setCrashed(): void {
     this.multiplierText.setColor('#ff4757');
-    this.scene.tweens.add({
-      targets: this.multiplierText,
-      scale: 1.2,
-      duration: 200,
-      yoyo: true,
-    });
+    this.scene.tweens.add({ targets: this.multiplierText, scale: 1.2, duration: 200, yoyo: true });
   }
 
   setCashedOut(winnings: number): void {
     this.multiplierText.setColor('#ffd700');
-    this.setStatus(`Cash out! +${winnings.toFixed(2)} moedas`);
+    this.setStatus(`Cash out! +${winnings.toFixed(2)}`);
   }
 
   updateBalance(): void {
-    this.balanceText.setText(`Saldo: ${GameState.balance.toFixed(2)}`);
+    this.balanceText.setText(`${GameState.balance.toFixed(0)} coins`);
   }
 
   setPlayEnabled(enabled: boolean): void {
@@ -165,22 +209,21 @@ export class CrashUI {
     this.historyTexts = [];
 
     const history = GameState.crashHistory;
-    const startX = 40;
-    const y = 490;
-    let xOffset = 0;
+    let xOffset = 10;
+    const y = 452;
 
-    history.forEach(h => {
+    history.slice(0, 8).forEach(h => {
       let color = '#ff4757';
       if (h >= 2 && h < 5) color = '#ffd700';
       else if (h >= 5) color = '#4ecdc4';
 
-      const t = this.add.text(startX + xOffset, y, `${h.toFixed(2)}x`, {
-        fontSize: '13px', fontFamily: 'Arial', color, fontStyle: 'bold',
+      const t = this.add.text(xOffset, y, `${h.toFixed(2)}x`, {
+        fontSize: '12px', fontFamily: 'Arial', color, fontStyle: 'bold',
         backgroundColor: color + '33',
-        padding: { x: 6, y: 3 },
+        padding: { x: 5, y: 2 },
       });
       this.historyTexts.push(t);
-      xOffset += t.width + 8;
+      xOffset += t.width + 6;
     });
   }
 

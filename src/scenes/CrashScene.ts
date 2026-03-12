@@ -2,19 +2,20 @@ import Phaser from 'phaser';
 import { GAME_CONFIG, COLORS } from '../utils/constants';
 import { GameState } from '../utils/GameState';
 import { Plane } from '../objects/Plane';
+import { Mascot } from '../objects/Mascot';
 import { CrashUI } from '../ui/CrashUI';
 import { StatsPanel } from '../ui/StatsPanel';
 import { SettingsPanel, GameSettings } from '../ui/SettingsPanel';
 
 export class CrashScene extends Phaser.Scene {
   private plane!: Plane;
+  private mascot!: Mascot;
   private ui!: CrashUI;
   private statsPanel!: StatsPanel;
   private settingsPanel!: SettingsPanel;
 
   private graphGraphics!: Phaser.GameObjects.Graphics;
 
-  // Game state
   private isRunning = false;
   private hasCashedOut = false;
   private currentMultiplier = 1;
@@ -22,42 +23,42 @@ export class CrashScene extends Phaser.Scene {
   private betAmount = 0;
   private startTime = 0;
 
-  // Settings overrides
   private houseEdge: number = GAME_CONFIG.HOUSE_EDGE;
   private instantCrashChance: number = GAME_CONFIG.INSTANT_CRASH_CHANCE;
   private multiplierSpeed: number = GAME_CONFIG.MULTIPLIER_SPEED;
 
-  // Graph area
-  private readonly graphX = 40;
-  private readonly graphY = 60;
-  private readonly graphW = GAME_CONFIG.WIDTH - 80;
-  private readonly graphH = 320;
+  // Graph area - portrait layout
+  private readonly graphX = 15;
+  private readonly graphY = 160;
+  private readonly graphW = GAME_CONFIG.WIDTH - 30;
+  private readonly graphH = 275;
 
   constructor() {
     super({ key: 'CrashScene' });
   }
 
   create(): void {
+    const w = GAME_CONFIG.WIDTH;
+    const h = GAME_CONFIG.HEIGHT;
+
     // Stars background
-    for (let i = 0; i < 50; i++) {
-      const x = Phaser.Math.Between(0, GAME_CONFIG.WIDTH);
-      const y = Phaser.Math.Between(0, GAME_CONFIG.HEIGHT);
-      const star = this.add.circle(x, y, Phaser.Math.FloatBetween(0.5, 1.5), 0xffffff, Phaser.Math.FloatBetween(0.1, 0.4));
-      this.tweens.add({
-        targets: star,
-        alpha: 0.1,
-        duration: Phaser.Math.Between(1500, 4000),
-        yoyo: true,
-        repeat: -1,
-      });
+    for (let i = 0; i < 40; i++) {
+      const x = Phaser.Math.Between(0, w);
+      const y = Phaser.Math.Between(0, h);
+      const star = this.add.circle(x, y, Phaser.Math.FloatBetween(0.5, 1.5), 0xffffff, Phaser.Math.FloatBetween(0.1, 0.3));
+      this.tweens.add({ targets: star, alpha: 0.05, duration: Phaser.Math.Between(1500, 4000), yoyo: true, repeat: -1 });
     }
 
     // Graph drawing layer
     this.graphGraphics = this.add.graphics();
 
     // Plane
-    this.plane = new Plane(this, this.graphX + 30, this.graphY + this.graphH - 20);
+    this.plane = new Plane(this, this.graphX + 20, this.graphY + this.graphH - 15);
     this.plane.setVisible(true);
+
+    // Mascot - centered above graph
+    this.mascot = new Mascot(this, w / 2, 95);
+    this.mascot.setDepth(10);
 
     // UI
     this.ui = new CrashUI(this);
@@ -67,16 +68,15 @@ export class CrashScene extends Phaser.Scene {
     this.ui.onOpenStats = () => this.statsPanel.toggle();
     this.ui.onOpenSettings = () => this.settingsPanel.toggle();
 
-    // Stats panel
+    // Panels
     this.statsPanel = new StatsPanel(this);
     this.statsPanel.create();
 
-    // Settings panel
     this.settingsPanel = new SettingsPanel(this);
     this.settingsPanel.create();
     this.settingsPanel.onSettingsChange = (s: GameSettings) => this.applySettings(s);
 
-    // Keyboard: space to cash out
+    // Keyboard
     this.input.keyboard?.on('keydown-SPACE', () => {
       if (this.isRunning && !this.hasCashedOut) this.cashOut();
     });
@@ -86,7 +86,7 @@ export class CrashScene extends Phaser.Scene {
     this.houseEdge = s.houseEdge;
     this.instantCrashChance = s.instantCrashChance;
     this.multiplierSpeed = s.multiplierSpeed;
-    this.ui.setStatus(`Configuracoes aplicadas! RTP: ${((1 - s.houseEdge) * 100).toFixed(1)}%`);
+    this.ui.setStatus(`RTP: ${((1 - s.houseEdge) * 100).toFixed(1)}%`);
   }
 
   private generateCrashPoint(): number {
@@ -114,8 +114,9 @@ export class CrashScene extends Phaser.Scene {
     this.ui.setStatus('Subindo...');
     this.ui.setMultiplier(1, '#4ecdc4');
 
-    this.plane.reset(this.graphX + 30, this.graphY + this.graphH - 20);
+    this.plane.reset(this.graphX + 20, this.graphY + this.graphH - 15);
     this.plane.startFlying();
+    this.mascot.setMood('excited');
 
     this.graphGraphics.clear();
   }
@@ -130,6 +131,7 @@ export class CrashScene extends Phaser.Scene {
     this.ui.updateBalance();
     this.ui.setCashedOut(winnings);
     this.ui.setCashoutEnabled(false);
+    this.mascot.setMood('happy');
   }
 
   private endGame(): void {
@@ -140,8 +142,9 @@ export class CrashScene extends Phaser.Scene {
     if (!this.hasCashedOut) {
       this.ui.setMultiplier(this.crashPoint, '#ff4757');
       this.ui.setCrashed();
-      this.ui.setStatus(`Crashou em ${this.crashPoint.toFixed(2)}x! Perdeu ${this.betAmount.toFixed(2)} moedas`);
+      this.ui.setStatus(`Crashou ${this.crashPoint.toFixed(2)}x!`);
       this.plane.explode();
+      this.mascot.setMood('sad');
 
       GameState.recordRound({
         bet: this.betAmount, crashAt: this.crashPoint, cashedAt: null, profit: -this.betAmount,
@@ -156,6 +159,11 @@ export class CrashScene extends Phaser.Scene {
 
     this.ui.updateHistory();
     this.ui.updateBalance();
+
+    // Return to idle after delay
+    this.time.delayedCall(3000, () => {
+      if (!this.isRunning) this.mascot.setMood('idle');
+    });
   }
 
   update(): void {
@@ -172,10 +180,14 @@ export class CrashScene extends Phaser.Scene {
       return;
     }
 
-    // Color based on multiplier
+    // Color + mascot mood based on multiplier
     let color = '#4ecdc4';
-    if (this.currentMultiplier >= 5) color = '#ff6b6b';
-    else if (this.currentMultiplier >= 2) color = '#ffd700';
+    if (this.currentMultiplier >= 5) {
+      color = '#ff6b6b';
+      if (!this.hasCashedOut) this.mascot.setMood('nervous');
+    } else if (this.currentMultiplier >= 2) {
+      color = '#ffd700';
+    }
 
     this.ui.setMultiplier(this.currentMultiplier, color);
     this.drawGraph(elapsed, false);
@@ -189,7 +201,7 @@ export class CrashScene extends Phaser.Scene {
     const gw = this.graphW;
     const gh = this.graphH;
 
-    // Grid lines
+    // Grid
     this.graphGraphics.lineStyle(0.5, COLORS.BORDER, 0.3);
     for (let i = 0; i < 8; i++) {
       const y = gy + (gh / 8) * i;
@@ -199,7 +211,6 @@ export class CrashScene extends Phaser.Scene {
     const maxTime = Math.max(elapsed + 1, 5);
     const maxMult = Math.max(this.currentMultiplier + 0.5, 3);
 
-    // Draw curve
     const lineColor = crashed ? COLORS.RED : COLORS.CYAN;
     this.graphGraphics.lineStyle(3, lineColor);
 
@@ -210,7 +221,7 @@ export class CrashScene extends Phaser.Scene {
       const t = i / 60;
       const mult = Math.pow(Math.E, this.multiplierSpeed * t);
       const x = gx + (t / maxTime) * gw;
-      const y = gy + gh - ((mult - 1) / (maxMult - 1)) * (gh - 30) - 10;
+      const y = gy + gh - ((mult - 1) / (maxMult - 1)) * (gh - 25) - 8;
       points.push({ x, y });
     }
 
@@ -235,10 +246,9 @@ export class CrashScene extends Phaser.Scene {
       this.graphGraphics.fillPath();
     }
 
-    // Update plane position
     if (points.length > 0) {
       const lastPoint = points[points.length - 1];
-      this.plane.setPosition(lastPoint.x + 20, lastPoint.y);
+      this.plane.setPosition(lastPoint.x + 15, lastPoint.y);
     }
   }
 }
