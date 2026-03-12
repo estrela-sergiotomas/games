@@ -14,7 +14,18 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
   },
+  input: {
+    touch: true,
+  },
   scene: [BootScene, MenuScene, CrashScene],
 };
 
-new Phaser.Game(config);
+const game = new Phaser.Game(config);
+
+// Fire game-ready for splash screen
+game.events.on('ready', () => {
+  window.dispatchEvent(new Event('game-ready'));
+});
+setTimeout(() => {
+  window.dispatchEvent(new Event('game-ready'));
+}, 2500);
