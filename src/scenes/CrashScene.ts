@@ -6,6 +6,9 @@ import { Mascot } from '../objects/Mascot';
 import { CrashUI } from '../ui/CrashUI';
 import { StatsPanel } from '../ui/StatsPanel';
 import { SettingsPanel, GameSettings } from '../ui/SettingsPanel';
+import { SoundFX } from '../assets/sfx';
+
+type RoundPhase = 'betting' | 'flying' | 'result';
 
 export class CrashScene extends Phaser.Scene {
   private plane!: Plane;
@@ -16,16 +19,26 @@ export class CrashScene extends Phaser.Scene {
 
   private graphGraphics!: Phaser.GameObjects.Graphics;
 
-  private isRunning = false;
+  private phase: RoundPhase = 'betting';
   private hasCashedOut = false;
   private currentMultiplier = 1;
   private crashPoint = 1;
   private betAmount = 0;
   private startTime = 0;
+  private playerJoined = false;
+  private lastLost = false;
 
   private houseEdge: number = GAME_CONFIG.HOUSE_EDGE;
   private instantCrashChance: number = GAME_CONFIG.INSTANT_CRASH_CHANCE;
   private multiplierSpeed: number = GAME_CONFIG.MULTIPLIER_SPEED;
+
+  // Round system
+  private roundNumber = 0;
+  private countdownTimer = 0;
+  private countdownEvent?: Phaser.Time.TimerEvent;
+
+  // SFX timer
+  private jetSfxTimer?: Phaser.Time.TimerEvent;
 
   // Graph area - portrait layout
   private readonly graphX = 15;
@@ -63,7 +76,7 @@ export class CrashScene extends Phaser.Scene {
     // UI
     this.ui = new CrashUI(this);
     this.ui.create();
-    this.ui.onPlay = () => this.startGame();
+    this.ui.onPlay = () => this.joinRound();
     this.ui.onCashOut = () => this.cashOut();
     this.ui.onOpenStats = () => this.statsPanel.toggle();
     this.ui.onOpenSettings = () => this.settingsPanel.toggle();
@@ -78,8 +91,12 @@ export class CrashScene extends Phaser.Scene {
 
     // Keyboard
     this.input.keyboard?.on('keydown-SPACE', () => {
-      if (this.isRunning && !this.hasCashedOut) this.cashOut();
+      if (this.phase === 'flying' && this.playerJoined && !this.hasCashedOut) this.cashOut();
+      else if (this.phase === 'betting') this.joinRound();
     });
+
+    // Start first round
+    this.startBettingPhase();
   }
 
   private applySettings(s: GameSettings): void {
@@ -95,34 +112,106 @@ export class CrashScene extends Phaser.Scene {
     return Math.max(1, Math.floor(((1 - this.houseEdge) / (1 - r)) * 100) / 100);
   }
 
-  private startGame(): void {
+  // === ROUND SYSTEM ===
+
+  private startBettingPhase(): void {
+    this.phase = 'betting';
+    this.roundNumber++;
+    this.playerJoined = false;
+    this.hasCashedOut = false;
+    this.betAmount = 0;
+
+    this.ui.setPlayEnabled(true);
+    this.ui.setCashoutEnabled(false);
+    this.ui.setMultiplier(1, '#4ecdc4');
+    this.ui.setRoundInfo(this.roundNumber, 'betting');
+
+    this.graphGraphics.clear();
+    this.plane.reset(this.graphX + 20, this.graphY + this.graphH - 15);
+
+    // If last round was a loss, mascot encourages
+    if (this.lastLost) {
+      this.mascot.setMood('excited');
+      this.mascot.say('Agora vai!!');
+      this.time.delayedCall(2000, () => {
+        if (this.phase === 'betting') this.mascot.setMood('idle');
+      });
+    } else {
+      this.mascot.setMood('idle');
+    }
+
+    // Countdown timer
+    this.countdownTimer = 5;
+    this.ui.setStatus(`Rodada #${this.roundNumber} - Aposte! (${this.countdownTimer}s)`);
+
+    this.countdownEvent = this.time.addEvent({
+      delay: 1000,
+      repeat: 4,
+      callback: () => {
+        this.countdownTimer--;
+        if (this.countdownTimer > 0) {
+          this.ui.setStatus(`Rodada #${this.roundNumber} - Aposte! (${this.countdownTimer}s)`);
+          SoundFX.playCountdownBeep(false);
+        } else {
+          SoundFX.playCountdownBeep(true);
+          this.startFlying();
+        }
+      },
+    });
+  }
+
+  private joinRound(): void {
+    if (this.phase !== 'betting') return;
+
     this.betAmount = this.ui.getBetAmount();
     if (!GameState.deductBet(this.betAmount)) {
       this.ui.setStatus('Saldo insuficiente!');
       return;
     }
 
+    this.playerJoined = true;
     this.ui.updateBalance();
+    this.ui.setPlayEnabled(false);
+    this.ui.setStatus(`Aposta de ${this.betAmount} confirmada! Aguarde...`);
+    SoundFX.playBetTick();
+    this.mascot.setMood('excited');
+  }
+
+  private startFlying(): void {
+    this.phase = 'flying';
     this.crashPoint = this.generateCrashPoint();
     this.currentMultiplier = 1;
-    this.isRunning = true;
-    this.hasCashedOut = false;
     this.startTime = this.time.now;
 
-    this.ui.setPlayEnabled(false);
-    this.ui.setCashoutEnabled(true);
-    this.ui.setStatus('Subindo...');
-    this.ui.setMultiplier(1, '#4ecdc4');
+    if (this.playerJoined) {
+      this.ui.setCashoutEnabled(true);
+      this.ui.setStatus('Subindo...');
+      this.ui.setRoundInfo(this.roundNumber, 'flying');
+      this.mascot.setMood('excited');
+    } else {
+      this.ui.setPlayEnabled(false);
+      this.ui.setStatus('Rodada em andamento...');
+      this.ui.setRoundInfo(this.roundNumber, 'watching');
+    }
 
+    this.ui.setMultiplier(1, '#4ecdc4');
     this.plane.reset(this.graphX + 20, this.graphY + this.graphH - 15);
     this.plane.startFlying();
-    this.mascot.setMood('excited');
-
     this.graphGraphics.clear();
+
+    // Jet engine SFX
+    SoundFX.playFlyAway();
+    this.jetSfxTimer = this.time.addEvent({
+      delay: 2000,
+      loop: true,
+      callback: () => {
+        if (this.phase === 'flying') SoundFX.playJetEngine(1);
+      },
+    });
   }
 
   private cashOut(): void {
-    if (!this.isRunning || this.hasCashedOut) return;
+    if (this.phase !== 'flying' || !this.playerJoined || this.hasCashedOut) return;
     this.hasCashedOut = true;
 
     const winnings = this.betAmount * this.currentMultiplier;
@@ -132,42 +221,56 @@ export class CrashScene extends Phaser.Scene {
     this.ui.setCashedOut(winnings);
     this.ui.setCashoutEnabled(false);
     this.mascot.setMood('happy');
+    SoundFX.playCashOut();
   }
 
-  private endGame(): void {
-    this.isRunning = false;
-    this.ui.setPlayEnabled(true);
-    this.ui.setCashoutEnabled(false);
+  private endRound(): void {
+    this.phase = 'result';
+    this.jetSfxTimer?.destroy();
 
-    if (!this.hasCashedOut) {
-      this.ui.setMultiplier(this.crashPoint, '#ff4757');
-      this.ui.setCrashed();
-      this.ui.setStatus(`Crashou ${this.crashPoint.toFixed(2)}x!`);
-      this.plane.explode();
-      this.mascot.setMood('sad');
+    if (this.playerJoined) {
+      if (!this.hasCashedOut) {
+        this.ui.setMultiplier(this.crashPoint, '#ff4757');
+        this.ui.setCrashed();
+        this.ui.setStatus(`Crashou ${this.crashPoint.toFixed(2)}x!`);
+        this.plane.explode();
+        this.mascot.setMood('sad');
+        SoundFX.playExplosion();
+        this.lastLost = true;
 
-      GameState.recordRound({
-        bet: this.betAmount, crashAt: this.crashPoint, cashedAt: null, profit: -this.betAmount,
-      });
+        GameState.recordRound({
+          bet: this.betAmount, crashAt: this.crashPoint, cashedAt: null, profit: -this.betAmount,
+        });
+      } else {
+        const profit = this.betAmount * this.currentMultiplier - this.betAmount;
+        this.plane.stopFlying();
+        this.lastLost = false;
+        GameState.recordRound({
+          bet: this.betAmount, crashAt: this.crashPoint, cashedAt: this.currentMultiplier, profit,
+        });
+      }
     } else {
-      const profit = this.betAmount * this.currentMultiplier - this.betAmount;
-      this.plane.stopFlying();
-      GameState.recordRound({
-        bet: this.betAmount, crashAt: this.crashPoint, cashedAt: this.currentMultiplier, profit,
-      });
+      // Player didn't join
+      this.ui.setMultiplier(this.crashPoint, '#ff4757');
+      this.ui.setStatus(`Crashou ${this.crashPoint.toFixed(2)}x! Voce nao apostou.`);
+      this.plane.explode();
+      SoundFX.playExplosion();
+      this.lastLost = false;
     }
 
     this.ui.updateHistory();
     this.ui.updateBalance();
+    this.ui.setCashoutEnabled(false);
+    this.ui.setRoundInfo(this.roundNumber, 'result');
 
-    // Return to idle after delay
+    // Next round after delay
     this.time.delayedCall(3000, () => {
-      if (!this.isRunning) this.mascot.setMood('idle');
+      this.startBettingPhase();
     });
   }
 
   update(): void {
-    if (!this.isRunning) return;
+    if (this.phase !== 'flying') return;
 
     const elapsed = (this.time.now - this.startTime) / 1000;
     this.currentMultiplier = Math.pow(Math.E, this.multiplierSpeed * elapsed);
@@ -176,7 +279,7 @@ export class CrashScene extends Phaser.Scene {
     if (this.currentMultiplier >= this.crashPoint) {
       this.currentMultiplier = this.crashPoint;
       this.drawGraph(elapsed, true);
-      this.endGame();
+      this.endRound();
       return;
     }
 
@@ -184,7 +287,7 @@ export class CrashScene extends Phaser.Scene {
     let color = '#4ecdc4';
     if (this.currentMultiplier >= 5) {
       color = '#ff6b6b';
-      if (!this.hasCashedOut) this.mascot.setMood('nervous');
+      if (this.playerJoined && !this.hasCashedOut) this.mascot.setMood('nervous');
     } else if (this.currentMultiplier >= 2) {
       color = '#ffd700';
     }

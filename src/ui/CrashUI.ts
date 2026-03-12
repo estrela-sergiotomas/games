@@ -24,6 +24,7 @@ export class CrashUI {
 
   private playBtn!: Phaser.GameObjects.Container;
   private cashoutBtn!: Phaser.GameObjects.Container;
+  private roundInfoText!: Phaser.GameObjects.Text;
 
   private betAmount: number = GAME_CONFIG.DEFAULT_BET;
 
@@ -63,6 +64,11 @@ export class CrashUI {
     this.multiplierText = this.add.text(w / 2, 290, '1.00x', {
       fontSize: '56px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
     }).setOrigin(0.5).setAlpha(0.85);
+
+    // Round info (bottom-right of graph)
+    this.roundInfoText = this.add.text(w - 25, 425, '', {
+      fontSize: '10px', fontFamily: 'Arial', color: '#555555',
+    }).setOrigin(1, 1);
 
     // Status text above graph
     this.statusText = this.add.text(w / 2, 155, 'Faca sua aposta', {
@@ -124,8 +130,8 @@ export class CrashUI {
     const btnH = 56;
     const halfW = (w - 30) / 2;
 
-    // JOGAR
-    this.playBtn = this.createButton(10, y, halfW, btnH, 'JOGAR', COLORS.CYAN, () => this.onPlay?.(), '20px');
+    // APOSTAR
+    this.playBtn = this.createButton(10, y, halfW, btnH, 'APOSTAR', COLORS.CYAN, () => this.onPlay?.(), '18px');
 
     // CASH OUT
     this.cashoutBtn = this.createButton(10 + halfW + gap, y, halfW, btnH, 'CASH OUT', COLORS.GOLD, () => this.onCashOut?.(), '18px');
@@ -225,6 +231,16 @@ export class CrashUI {
       this.historyTexts.push(t);
       xOffset += t.width + 6;
     });
+  }
+
+  setRoundInfo(round: number, phase: string): void {
+    const labels: Record<string, string> = {
+      betting: `Rodada #${round} - Apostas abertas`,
+      flying: `Rodada #${round} - Em voo`,
+      watching: `Rodada #${round} - Assistindo`,
+      result: `Rodada #${round} - Resultado`,
+    };
+    this.roundInfoText.setText(labels[phase] || `Rodada #${round}`);
   }
 
   private add = {
