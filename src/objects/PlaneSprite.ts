@@ -2,97 +2,65 @@ import Phaser from 'phaser';
 
 export class PlaneSprite {
   /**
-   * Generates executive jet texture programmatically.
-   * Sleek private jet with swept wings and T-tail.
+   * Generates the red biplane texture matching the splash screen SVG.
    */
   static generateTexture(scene: Phaser.Scene): void {
     const gfx = scene.make.graphics({ x: 0, y: 0 });
-    const w = 90;
+    const w = 80;
     const h = 40;
 
-    // --- Fuselage (sleek tube) ---
-    gfx.fillStyle(0xe8e8e8);
-    gfx.fillRoundedRect(8, 13, 62, 14, 7);
+    // --- Exhaust flame glow (behind plane) ---
+    gfx.fillStyle(0xff6600, 0.7);
+    gfx.fillEllipse(5, 20, 14, 8);
+    gfx.fillStyle(0xffcc00, 0.9);
+    gfx.fillEllipse(7, 20, 8, 6);
 
-    // Fuselage stripe (gold accent)
-    gfx.fillStyle(0xffd700, 0.6);
-    gfx.fillRect(12, 19, 55, 2);
+    // --- Fuselage (red body) ---
+    gfx.fillStyle(0xcc2233);
+    gfx.fillRoundedRect(13, 12, 40, 15, 5);
+    // Nose taper
+    gfx.fillTriangle(52, 12, 60, 16, 52, 27);
+    // Tail taper
+    gfx.fillTriangle(13, 14, 20, 19, 13, 26);
 
-    // Nose cone (pointed)
-    gfx.fillStyle(0xcccccc);
-    gfx.fillTriangle(70, 14, 82, 20, 70, 26);
-
-    // Cockpit windows
+    // --- Cockpit ---
+    gfx.fillStyle(0xdd3344);
+    gfx.fillEllipse(50, 15, 12, 7);
+    // Window
     gfx.fillStyle(0x1a1a3e);
-    gfx.fillRoundedRect(64, 14, 10, 5, 2);
-    // Window shine
-    gfx.fillStyle(0x4ecdc4, 0.5);
-    gfx.fillRoundedRect(65, 15, 4, 3, 1);
+    gfx.fillEllipse(51, 14, 8, 5);
+    // Shine
+    gfx.fillStyle(0x4ecdc4, 0.4);
+    gfx.fillEllipse(50, 13, 4, 3);
 
-    // Passenger windows
-    gfx.fillStyle(0x66ccff, 0.4);
-    for (let i = 0; i < 5; i++) {
-      gfx.fillRoundedRect(30 + i * 7, 15, 4, 3, 1);
-    }
-
-    // --- Swept wings ---
+    // --- Wings (biplane) ---
+    gfx.fillStyle(0xbb1122);
     // Top wing
-    gfx.fillStyle(0xd0d0d0);
-    gfx.beginPath();
-    gfx.moveTo(35, 13);
-    gfx.lineTo(50, 3);
-    gfx.lineTo(42, 3);
-    gfx.lineTo(25, 13);
-    gfx.closePath();
-    gfx.fillPath();
+    gfx.fillRoundedRect(27, 7, 24, 4, 2);
     // Bottom wing
-    gfx.beginPath();
-    gfx.moveTo(35, 27);
-    gfx.lineTo(50, 37);
-    gfx.lineTo(42, 37);
-    gfx.lineTo(25, 27);
-    gfx.closePath();
-    gfx.fillPath();
+    gfx.fillRoundedRect(27, 29, 24, 4, 2);
 
-    // Wing tips
-    gfx.fillStyle(0xff4757, 0.7);
-    gfx.fillRect(48, 2, 3, 3);
-    gfx.fillRect(48, 36, 3, 3);
+    // --- Tail fin ---
+    gfx.fillStyle(0xcc2233);
+    gfx.fillTriangle(17, 12, 23, 5, 27, 12);
 
-    // --- T-tail ---
-    // Vertical stabilizer
-    gfx.fillStyle(0xd8d8d8);
-    gfx.beginPath();
-    gfx.moveTo(8, 13);
-    gfx.lineTo(4, 4);
-    gfx.lineTo(16, 4);
-    gfx.lineTo(16, 13);
-    gfx.closePath();
-    gfx.fillPath();
-    // Horizontal stabilizer (on top of vertical)
-    gfx.fillStyle(0xc8c8c8);
-    gfx.beginPath();
-    gfx.moveTo(4, 4);
-    gfx.lineTo(0, 0);
-    gfx.lineTo(8, 0);
-    gfx.lineTo(16, 4);
-    gfx.closePath();
-    gfx.fillPath();
+    // --- Tail stabilizers ---
+    gfx.fillStyle(0xbb1122);
+    gfx.fillRoundedRect(15, 10, 10, 3, 1);
+    gfx.fillRoundedRect(15, 26, 10, 3, 1);
 
-    // --- Engines (under wings) ---
-    gfx.fillStyle(0x888888);
-    gfx.fillRoundedRect(38, 6, 10, 5, 2);
-    gfx.fillRoundedRect(38, 29, 10, 5, 2);
+    // --- Engine nose ---
+    gfx.fillStyle(0x666666);
+    gfx.fillRoundedRect(61, 14, 6, 10, 2);
 
-    // Engine intake glow
-    gfx.fillStyle(0x444444);
-    gfx.fillCircle(49, 8, 2);
-    gfx.fillCircle(49, 32, 2);
+    // --- Propeller disc ---
+    gfx.fillStyle(0xcccccc, 0.4);
+    gfx.fillEllipse(68, 19, 4, 18);
 
     gfx.generateTexture('plane', w, h);
     gfx.destroy();
 
-    // --- Propeller spinning texture (reused as engine glow) ---
+    // --- Propeller spinning texture ---
     const propGfx = scene.make.graphics({ x: 0, y: 0 });
     propGfx.fillStyle(0xdddddd);
     propGfx.fillRoundedRect(1, 0, 4, 16, 2);
@@ -102,15 +70,14 @@ export class PlaneSprite {
     propGfx.generateTexture('propeller', 6, 38);
     propGfx.destroy();
 
-    // --- Engine exhaust/trail texture ---
+    // --- Flame/exhaust texture ---
     const flameGfx = scene.make.graphics({ x: 0, y: 0 });
-    // Jet exhaust (blue-ish)
-    flameGfx.fillStyle(0x4ecdc4, 0.5);
-    flameGfx.fillEllipse(12, 8, 28, 8);
-    flameGfx.fillStyle(0x88ddff, 0.6);
-    flameGfx.fillEllipse(10, 8, 18, 5);
-    flameGfx.fillStyle(0xffffff, 0.7);
-    flameGfx.fillEllipse(8, 8, 8, 3);
+    flameGfx.fillStyle(0xff6600, 0.7);
+    flameGfx.fillEllipse(12, 8, 24, 10);
+    flameGfx.fillStyle(0xffcc00, 0.8);
+    flameGfx.fillEllipse(10, 8, 16, 6);
+    flameGfx.fillStyle(0xfff4cc, 0.9);
+    flameGfx.fillEllipse(8, 8, 8, 4);
     flameGfx.generateTexture('flame', 24, 16);
     flameGfx.destroy();
 
