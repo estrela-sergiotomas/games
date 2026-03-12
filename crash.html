@@ -165,6 +165,129 @@
             max-width: 500px;
             line-height: 1.5;
         }
+        .btn-stats {
+            background: linear-gradient(135deg, #a855f7, #7c3aed);
+            color: #fff;
+        }
+        .btn-stats:hover { transform: scale(1.05); }
+        .stats-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .stats-overlay.open { display: flex; }
+        .stats-panel {
+            background: #1a1a3e;
+            border: 1px solid #2a2a5e;
+            border-radius: 16px;
+            padding: 30px;
+            width: 500px;
+            max-width: 95vw;
+            max-height: 90vh;
+            overflow-y: auto;
+            position: relative;
+        }
+        .stats-panel h2 {
+            font-size: 1.5rem;
+            margin-bottom: 20px;
+            color: #e0e0e0;
+            text-align: center;
+        }
+        .stats-close {
+            position: absolute;
+            top: 12px; right: 16px;
+            background: none;
+            border: none;
+            color: #888;
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        .stats-close:hover { color: #fff; }
+        .stats-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            margin-bottom: 20px;
+        }
+        .stat-card {
+            background: #0f0f23;
+            border-radius: 10px;
+            padding: 16px;
+            text-align: center;
+        }
+        .stat-card .label {
+            font-size: 0.8rem;
+            color: #888;
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .stat-card .value {
+            font-size: 1.6rem;
+            font-weight: bold;
+        }
+        .stat-card .value.green { color: #4ecdc4; }
+        .stat-card .value.red { color: #ff4757; }
+        .stat-card .value.gold { color: #ffd700; }
+        .stat-card .value.purple { color: #a855f7; }
+        .stats-section-title {
+            font-size: 0.9rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin: 20px 0 10px;
+            border-bottom: 1px solid #2a2a5e;
+            padding-bottom: 6px;
+        }
+        .stats-bar {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+        }
+        .stats-bar .bar-label {
+            font-size: 0.85rem;
+            color: #aaa;
+            width: 80px;
+            text-align: right;
+        }
+        .stats-bar .bar-track {
+            flex: 1;
+            height: 20px;
+            background: #0f0f23;
+            border-radius: 10px;
+            overflow: hidden;
+        }
+        .stats-bar .bar-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.3s;
+        }
+        .stats-bar .bar-value {
+            font-size: 0.85rem;
+            color: #ccc;
+            width: 50px;
+        }
+        .round-log {
+            max-height: 180px;
+            overflow-y: auto;
+            margin-top: 10px;
+        }
+        .round-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 10px;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #1a1a3e;
+        }
+        .round-row:nth-child(odd) { background: #0f0f23; border-radius: 4px; }
+        .round-row .rr-result { font-weight: bold; }
+        .round-row .rr-result.win { color: #4ecdc4; }
+        .round-row .rr-result.loss { color: #ff4757; }
     </style>
 </head>
 <body>
@@ -185,9 +308,57 @@
         </div>
         <button class="btn btn-play" id="btnPlay" onclick="startGame()">Jogar</button>
         <button class="btn btn-cashout" id="btnCashout" onclick="cashOut()" disabled>Cash Out</button>
+        <button class="btn btn-stats" onclick="toggleStats()">Stats</button>
     </div>
 
     <div class="history" id="history"></div>
+
+    <div class="stats-overlay" id="statsOverlay" onclick="if(event.target===this)toggleStats()">
+        <div class="stats-panel">
+            <button class="stats-close" onclick="toggleStats()">&times;</button>
+            <h2>Estatisticas</h2>
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="label">Rodadas</div>
+                    <div class="value purple" id="statRounds">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Win Rate</div>
+                    <div class="value gold" id="statWinRate">0%</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Lucro Total</div>
+                    <div class="value green" id="statProfit">0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Maior Ganho</div>
+                    <div class="value green" id="statBigWin">0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Maior Perda</div>
+                    <div class="value red" id="statBigLoss">0.00</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Melhor Multi</div>
+                    <div class="value gold" id="statBestMult">0.00x</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Sequencia Wins</div>
+                    <div class="value green" id="statWinStreak">0</div>
+                </div>
+                <div class="stat-card">
+                    <div class="label">Sequencia Losses</div>
+                    <div class="value red" id="statLossStreak">0</div>
+                </div>
+            </div>
+
+            <div class="stats-section-title">Distribuicao de Crashes</div>
+            <div id="crashDistribution"></div>
+
+            <div class="stats-section-title">Historico de Rodadas</div>
+            <div class="round-log" id="roundLog"></div>
+        </div>
+    </div>
 
     <p class="instructions">
         Clique em <strong>JOGAR</strong> para iniciar. O multiplicador sobe — clique em
@@ -217,6 +388,7 @@
         let animationId = null;
         let points = [];
         let history = [];
+        let rounds = []; // {bet, crashAt, cashedAt, profit}
 
         function generateCrashPoint() {
             // Provably fair-ish crash point generation
@@ -275,10 +447,17 @@
             betInput.disabled = false;
             rocketEl.style.opacity = '0';
 
+            let roundProfit;
             if (!hasCashedOut) {
                 multiplierEl.textContent = `${crashPoint.toFixed(2)}x`;
                 multiplierEl.className = 'multiplier-display crashed';
                 statusEl.textContent = `Crashou em ${crashPoint.toFixed(2)}x! Você perdeu ${betAmount.toFixed(2)} moedas`;
+                roundProfit = -betAmount;
+                rounds.push({ bet: betAmount, crashAt: crashPoint, cashedAt: null, profit: roundProfit });
+            } else {
+                const cashedMult = parseFloat(multiplierEl.textContent);
+                roundProfit = betAmount * currentMultiplier - betAmount;
+                rounds.push({ bet: betAmount, crashAt: crashPoint, cashedAt: currentMultiplier, profit: roundProfit });
             }
 
             // Add to history
@@ -407,6 +586,77 @@
                 cashOut();
             }
         });
+
+        function toggleStats() {
+            const overlay = document.getElementById('statsOverlay');
+            overlay.classList.toggle('open');
+            if (overlay.classList.contains('open')) updateStats();
+        }
+
+        function updateStats() {
+            const total = rounds.length;
+            const wins = rounds.filter(r => r.profit > 0);
+            const losses = rounds.filter(r => r.profit <= 0);
+            const totalProfit = rounds.reduce((s, r) => s + r.profit, 0);
+            const bigWin = wins.length ? Math.max(...wins.map(r => r.profit)) : 0;
+            const bigLoss = losses.length ? Math.min(...losses.map(r => r.profit)) : 0;
+            const bestMult = wins.length ? Math.max(...wins.map(r => r.cashedAt)) : 0;
+
+            // Streaks
+            let maxWin = 0, maxLoss = 0, curWin = 0, curLoss = 0;
+            for (const r of rounds) {
+                if (r.profit > 0) { curWin++; curLoss = 0; maxWin = Math.max(maxWin, curWin); }
+                else { curLoss++; curWin = 0; maxLoss = Math.max(maxLoss, curLoss); }
+            }
+
+            document.getElementById('statRounds').textContent = total;
+            document.getElementById('statWinRate').textContent = total ? (wins.length / total * 100).toFixed(1) + '%' : '0%';
+
+            const profitEl = document.getElementById('statProfit');
+            profitEl.textContent = (totalProfit >= 0 ? '+' : '') + totalProfit.toFixed(2);
+            profitEl.className = 'value ' + (totalProfit >= 0 ? 'green' : 'red');
+
+            document.getElementById('statBigWin').textContent = '+' + bigWin.toFixed(2);
+            document.getElementById('statBigLoss').textContent = bigLoss.toFixed(2);
+            document.getElementById('statBestMult').textContent = bestMult.toFixed(2) + 'x';
+            document.getElementById('statWinStreak').textContent = maxWin;
+            document.getElementById('statLossStreak').textContent = maxLoss;
+
+            // Crash distribution
+            const ranges = [
+                { label: '1.00x', min: 1, max: 1.5, color: '#ff4757' },
+                { label: '1.5-2x', min: 1.5, max: 2, color: '#ff6b81' },
+                { label: '2-3x', min: 2, max: 3, color: '#ffd700' },
+                { label: '3-5x', min: 3, max: 5, color: '#f0932b' },
+                { label: '5-10x', min: 5, max: 10, color: '#4ecdc4' },
+                { label: '10x+', min: 10, max: Infinity, color: '#a855f7' },
+            ];
+            const distEl = document.getElementById('crashDistribution');
+            const allCrashes = rounds.map(r => r.crashAt);
+            distEl.innerHTML = ranges.map(range => {
+                const count = allCrashes.filter(c => c >= range.min && c < range.max).length;
+                const pct = total ? (count / total * 100) : 0;
+                return `<div class="stats-bar">
+                    <span class="bar-label">${range.label}</span>
+                    <div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${range.color}"></div></div>
+                    <span class="bar-value">${count} (${pct.toFixed(0)}%)</span>
+                </div>`;
+            }).join('');
+
+            // Round log
+            const logEl = document.getElementById('roundLog');
+            logEl.innerHTML = [...rounds].reverse().map((r, i) => {
+                const num = rounds.length - i;
+                const isWin = r.profit > 0;
+                return `<div class="round-row">
+                    <span>#${num}</span>
+                    <span>Aposta: ${r.bet.toFixed(2)}</span>
+                    <span>Crash: ${r.crashAt.toFixed(2)}x</span>
+                    <span>${r.cashedAt ? 'Cash: ' + r.cashedAt.toFixed(2) + 'x' : 'Perdeu'}</span>
+                    <span class="rr-result ${isWin ? 'win' : 'loss'}">${(r.profit >= 0 ? '+' : '') + r.profit.toFixed(2)}</span>
+                </div>`;
+            }).join('');
+        }
 
         // Initial draw
         drawGraph(0, false);
