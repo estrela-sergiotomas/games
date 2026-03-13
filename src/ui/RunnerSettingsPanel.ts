@@ -140,11 +140,33 @@ export class RunnerSettingsPanel {
       y += rowH;
     }
 
-    // Scroll support
+    // Scroll support (wheel + touch drag)
     const maxScroll = Math.max(0, y - contentY - contentH);
-    this.scene.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
-      this.scrollY = Phaser.Math.Clamp(this.scrollY + dy * 0.5, -maxScroll, 0);
+
+    const applyScroll = () => {
+      this.scrollY = Phaser.Math.Clamp(this.scrollY, -maxScroll, 0);
       this.contentContainer.y = this.scrollY;
+    };
+
+    this.scene.input.on('wheel', (_pointer: Phaser.Input.Pointer, _gameObjects: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
+      this.scrollY -= dy * 0.5;
+      applyScroll();
+    });
+
+    // Touch drag scroll
+    const scrollHit = this.scene.add.rectangle(w / 2, contentY + contentH / 2, pw, contentH)
+      .setInteractive({ draggable: true });
+    this.container.add(scrollHit);
+
+    let dragStartY = 0;
+    let dragScrollStart = 0;
+    scrollHit.on('dragstart', (_p: Phaser.Input.Pointer) => {
+      dragStartY = _p.y;
+      dragScrollStart = this.scrollY;
+    });
+    scrollHit.on('drag', (_p: Phaser.Input.Pointer) => {
+      this.scrollY = dragScrollStart + (_p.y - dragStartY);
+      applyScroll();
     });
 
     // Bottom buttons

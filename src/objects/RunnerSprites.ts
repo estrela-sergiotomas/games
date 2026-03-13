@@ -9,6 +9,7 @@ export class RunnerSprites {
     this.generateRunner(scene);
     this.generatePlatform(scene);
     this.generateCoin(scene);
+    this.generateTutorialCoin(scene);
     this.generatePremiumCoin(scene);
     this.generateCloud(scene);
     this.generateFlag(scene);
@@ -141,6 +142,16 @@ export class RunnerSprites {
     g.fillStyle(0xb8860b);
     g.fillRect(7, 4, 2, 8); g.fillRect(5, 5, 6, 2); g.fillRect(5, 9, 6, 2);
     g.generateTexture('coin', 16, 16); g.destroy();
+  }
+
+  private static generateTutorialCoin(scene: Phaser.Scene): void {
+    const g = scene.make.graphics({ x: 0, y: 0 });
+    // Silver/light blue tutorial coin - worth less than normal
+    g.fillStyle(0x88ccdd); g.fillCircle(8, 8, 7);
+    g.fillStyle(0xaaddee); g.fillCircle(6, 6, 3);
+    g.fillStyle(0x5599aa);
+    g.fillRect(7, 4, 2, 8); g.fillRect(5, 5, 6, 2); g.fillRect(5, 9, 6, 2);
+    g.generateTexture('coin_tutorial', 16, 16); g.destroy();
   }
 
   private static generatePremiumCoin(scene: Phaser.Scene): void {

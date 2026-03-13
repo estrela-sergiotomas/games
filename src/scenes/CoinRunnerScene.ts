@@ -26,6 +26,7 @@ interface EnemyData {
 interface CoinData {
   sprite: Phaser.GameObjects.Image;
   premium: boolean;
+  tutorial?: boolean;
 }
 
 interface Segment {
@@ -216,7 +217,13 @@ export class CoinRunnerScene extends Phaser.Scene {
       seg.grounds.push(tile);
     }
 
-    // No coins in tutorial area - coins only appear after first obstacle
+    // Tutorial coins (silver, worth 0.001x each)
+    for (let i = 0; i < 5; i++) {
+      const cx = 250 + i * 40;
+      const coin = this.add.image(cx, this.groundY - 20, 'coin_tutorial').setScale(1.3);
+      this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      seg.coins.push({ sprite: coin, premium: false, tutorial: true });
+    }
 
     this.segments.push(seg);
     this.nextSegmentX = seg.endX;
@@ -1107,7 +1114,15 @@ export class CoinRunnerScene extends Phaser.Scene {
         if (!cd.sprite.active) continue;
         if (this.overlap(this.runner, cd.sprite, 22, 28)) {
           this.coinsCollected++;
-          if (cd.premium) {
+          if (cd.tutorial) {
+            // Tutorial coin - small value (0.001x)
+            const tutValue = 0.001;
+            this.currentMultiplier += tutValue;
+            const label = this.add.text(cd.sprite.x, cd.sprite.y - 15, `+${tutValue.toFixed(3)}x`, {
+              fontSize: '10px', fontFamily: 'Arial', color: '#88ccdd',
+            }).setOrigin(0.5).setDepth(200);
+            this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
+          } else if (cd.premium) {
             // Premium coin (also boosted by challenge bonus)
             const premValue = RunnerSettings.premiumCoinValue * this.coinMultiplierBonus;
             this.currentMultiplier += premValue;

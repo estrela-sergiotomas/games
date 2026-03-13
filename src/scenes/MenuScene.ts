@@ -256,11 +256,11 @@ export class MenuScene extends Phaser.Scene {
     overlay.fillRect(0, 0, w, h);
     container.add(overlay);
 
-    // Panel
-    const panelW = w - 30;
-    const panelH = 480;
-    const panelX = 15;
-    const panelY = (h - panelH) / 2;
+    // Panel - nearly full screen
+    const panelW = w - 20;
+    const panelH = h - 40;
+    const panelX = 10;
+    const panelY = 20;
 
     const bg = this.add.graphics();
     bg.fillStyle(0x1a1a3e, 0.97);
@@ -270,19 +270,34 @@ export class MenuScene extends Phaser.Scene {
     container.add(bg);
 
     // Title
-    container.add(this.add.text(cx, panelY + 22, 'COIN RUNNER', {
-      fontSize: '24px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
+    container.add(this.add.text(cx, panelY + 18, 'COIN RUNNER', {
+      fontSize: '22px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
     }).setOrigin(0.5, 0));
 
-    container.add(this.add.text(cx, panelY + 52, 'Como Jogar', {
-      fontSize: '16px', fontFamily: 'Arial', color: '#4ecdc4',
+    container.add(this.add.text(cx, panelY + 44, 'Como Jogar', {
+      fontSize: '15px', fontFamily: 'Arial', color: '#4ecdc4',
     }).setOrigin(0.5, 0));
 
     // Divider
     const div = this.add.graphics();
     div.lineStyle(1, 0xffd700, 0.3);
-    div.lineBetween(panelX + 20, panelY + 78, panelX + panelW - 20, panelY + 78);
+    div.lineBetween(panelX + 20, panelY + 68, panelX + panelW - 20, panelY + 68);
     container.add(div);
+
+    // Scrollable content area
+    const contentTopY = panelY + 74;
+    const btnAreaH = 62;
+    const contentH = panelH - 74 - btnAreaH;
+
+    // Mask for scrollable area
+    const maskShape = this.add.graphics();
+    maskShape.fillStyle(0xffffff);
+    maskShape.fillRect(panelX, contentTopY, panelW, contentH);
+    const mask = maskShape.createGeometryMask();
+
+    const scrollContent = this.add.container(0, 0);
+    scrollContent.setMask(mask);
+    container.add(scrollContent);
 
     // Instructions text
     const instructions = [
@@ -292,19 +307,19 @@ export class MenuScene extends Phaser.Scene {
       { icon: '4.', text: 'Moedas roxas premium valem\n   +0.10x cada!' },
       { icon: '5.', text: 'Pressione CASH OUT a qualquer\n   momento para garantir seus ganhos.' },
       { icon: '6.', text: 'Se voce morrer, perde a aposta!' },
-      { icon: '!', text: 'Roleta: o 1o obstaculo pode ser\\n   impossivel! (chance configuravel)' },
+      { icon: '!', text: 'Roleta: o 1o obstaculo pode ser\n   impossivel! (chance configuravel)' },
     ];
 
-    let yPos = panelY + 90;
+    let yPos = contentTopY;
     for (const inst of instructions) {
-      container.add(this.add.text(panelX + 25, yPos, inst.icon, {
+      scrollContent.add(this.add.text(panelX + 25, yPos, inst.icon, {
         fontSize: '14px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
       }));
-      container.add(this.add.text(panelX + 45, yPos, inst.text, {
+      scrollContent.add(this.add.text(panelX + 45, yPos, inst.text, {
         fontSize: '13px', fontFamily: 'Arial', color: '#e0e0e0',
         lineSpacing: 4,
       }));
-      yPos += 42;
+      yPos += 40;
     }
 
     // Rules section
@@ -312,15 +327,15 @@ export class MenuScene extends Phaser.Scene {
     const div2 = this.add.graphics();
     div2.lineStyle(1, 0xffd700, 0.3);
     div2.lineBetween(panelX + 20, yPos, panelX + panelW - 20, yPos);
-    container.add(div2);
+    scrollContent.add(div2);
     yPos += 12;
 
-    container.add(this.add.text(cx, yPos, 'Regras & RTP', {
+    scrollContent.add(this.add.text(cx, yPos, 'Regras & RTP', {
       fontSize: '15px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
     }).setOrigin(0.5, 0));
     yPos += 24;
 
-    container.add(this.add.text(panelX + 25, yPos,
+    scrollContent.add(this.add.text(panelX + 25, yPos,
       'Ganhos = Aposta x Multiplicador\n' +
       'Cogumelo venenoso: perde 50% do mult.\n' +
       'Quanto mais longe, mais dificil fica!\n\n' +
@@ -330,12 +345,43 @@ export class MenuScene extends Phaser.Scene {
         lineSpacing: 5,
       }
     ));
+    yPos += 90;
 
-    // Play button
+    // Scroll support (wheel + touch drag)
+    const totalContentH = yPos - contentTopY;
+    const maxScroll = Math.max(0, totalContentH - contentH);
+    let scrollY = 0;
+    let dragStartY = 0;
+    let dragScrollStart = 0;
+
+    const scrollHit = this.add.rectangle(cx, contentTopY + contentH / 2, panelW, contentH)
+      .setInteractive({ draggable: true });
+    container.add(scrollHit);
+
+    const applyScroll = () => {
+      scrollY = Phaser.Math.Clamp(scrollY, -maxScroll, 0);
+      scrollContent.y = scrollY;
+    };
+
+    this.input.on('wheel', (_p: Phaser.Input.Pointer, _go: Phaser.GameObjects.GameObject[], _dx: number, dy: number) => {
+      scrollY -= dy * 0.5;
+      applyScroll();
+    });
+
+    scrollHit.on('dragstart', (_p: Phaser.Input.Pointer) => {
+      dragStartY = _p.y;
+      dragScrollStart = scrollY;
+    });
+    scrollHit.on('drag', (_p: Phaser.Input.Pointer) => {
+      scrollY = dragScrollStart + (_p.y - dragStartY);
+      applyScroll();
+    });
+
+    // Play button (fixed at bottom, outside scroll)
     const btnW = 200;
     const btnH = 48;
     const btnX = cx - btnW / 2;
-    const btnY = panelY + panelH - 62;
+    const btnY = panelY + panelH - 58;
 
     const btnGfx = this.add.graphics();
     btnGfx.fillStyle(0x00aa00);
