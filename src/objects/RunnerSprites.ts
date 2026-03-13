@@ -62,6 +62,52 @@ export class RunnerSprites {
     gj.fillStyle(0xffd700); gj.fillRect(3*s, 7*s, s, s); gj.fillRect(7*s, 7*s, s, s);
     gj.fillStyle(0x6b3e08); gj.fillRect(s, 11*s, 3*s, s); gj.fillRect(7*s, 11*s, 3*s, s);
     gj.generateTexture('runner_jump', 11*s, 12*s); gj.destroy();
+
+    // Walk frame 1: left leg forward, right leg back
+    const gw1 = scene.make.graphics({ x: 0, y: 0 });
+    gw1.fillStyle(0xe52521);
+    gw1.fillRect(3*s, 0, 5*s, s); gw1.fillRect(2*s, s, 8*s, s);
+    gw1.fillStyle(0x6b3e08);
+    gw1.fillRect(2*s, 2*s, 3*s, s); gw1.fillRect(s, 3*s, 2*s, s); gw1.fillRect(s, 4*s, s, s);
+    gw1.fillStyle(0xfab882);
+    gw1.fillRect(5*s, 2*s, 4*s, s); gw1.fillRect(3*s, 3*s, 6*s, s);
+    gw1.fillRect(2*s, 4*s, 7*s, s); gw1.fillRect(3*s, 5*s, 5*s, s);
+    gw1.fillStyle(0x000000);
+    gw1.fillRect(5*s, 3*s, s, s); gw1.fillRect(7*s, 3*s, s, s);
+    gw1.fillStyle(0xd4764e); gw1.fillRect(6*s, 4*s, s, s);
+    gw1.fillStyle(0xe52521);
+    gw1.fillRect(2*s, 6*s, 7*s, s); gw1.fillRect(s, 7*s, 9*s, s); gw1.fillRect(2*s, 8*s, 7*s, s);
+    gw1.fillStyle(0xffd700); gw1.fillRect(3*s, 7*s, s, s); gw1.fillRect(7*s, 7*s, s, s);
+    // Left leg forward, right leg back
+    gw1.fillStyle(0x2038ec);
+    gw1.fillRect(2*s, 9*s, 3*s, s); gw1.fillRect(s, 10*s, 3*s, s);
+    gw1.fillRect(6*s, 9*s, 3*s, s); gw1.fillRect(7*s, 10*s, 3*s, s);
+    gw1.fillStyle(0x6b3e08);
+    gw1.fillRect(0, 11*s, 3*s, s); gw1.fillRect(8*s, 11*s, 3*s, s);
+    gw1.generateTexture('runner_walk1', 11*s, 12*s); gw1.destroy();
+
+    // Walk frame 2: legs together / passing
+    const gw2 = scene.make.graphics({ x: 0, y: 0 });
+    gw2.fillStyle(0xe52521);
+    gw2.fillRect(3*s, 0, 5*s, s); gw2.fillRect(2*s, s, 8*s, s);
+    gw2.fillStyle(0x6b3e08);
+    gw2.fillRect(2*s, 2*s, 3*s, s); gw2.fillRect(s, 3*s, 2*s, s); gw2.fillRect(s, 4*s, s, s);
+    gw2.fillStyle(0xfab882);
+    gw2.fillRect(5*s, 2*s, 4*s, s); gw2.fillRect(3*s, 3*s, 6*s, s);
+    gw2.fillRect(2*s, 4*s, 7*s, s); gw2.fillRect(3*s, 5*s, 5*s, s);
+    gw2.fillStyle(0x000000);
+    gw2.fillRect(5*s, 3*s, s, s); gw2.fillRect(7*s, 3*s, s, s);
+    gw2.fillStyle(0xd4764e); gw2.fillRect(6*s, 4*s, s, s);
+    gw2.fillStyle(0xe52521);
+    gw2.fillRect(2*s, 6*s, 7*s, s); gw2.fillRect(s, 7*s, 9*s, s); gw2.fillRect(2*s, 8*s, 7*s, s);
+    gw2.fillStyle(0xffd700); gw2.fillRect(3*s, 7*s, s, s); gw2.fillRect(7*s, 7*s, s, s);
+    // Legs together (right leg forward, left leg back)
+    gw2.fillStyle(0x2038ec);
+    gw2.fillRect(6*s, 9*s, 3*s, s); gw2.fillRect(5*s, 10*s, 3*s, s);
+    gw2.fillRect(2*s, 9*s, 3*s, s); gw2.fillRect(3*s, 10*s, 3*s, s);
+    gw2.fillStyle(0x6b3e08);
+    gw2.fillRect(4*s, 11*s, 3*s, s); gw2.fillRect(2*s, 11*s, 3*s, s);
+    gw2.generateTexture('runner_walk2', 11*s, 12*s); gw2.destroy();
   }
 
   private static generatePlatform(scene: Phaser.Scene): void {

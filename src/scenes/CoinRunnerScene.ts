@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_CONFIG } from '../utils/constants';
 import { GameState } from '../utils/GameState';
 import { SoundFX } from '../assets/sfx';
+import { RunnerSettings } from '../utils/RunnerSettings';
 
 type RunnerPhase = 'betting' | 'tutorial' | 'running' | 'cashout_anim' | 'result';
 
@@ -70,13 +71,13 @@ export class CoinRunnerScene extends Phaser.Scene {
   private tutorialArrow?: Phaser.GameObjects.Text;
   private tutorialStep = 0;
   private tutorialTimer = 0;
-  private readonly TUTORIAL_SAFE_DISTANCE = 600; // safe ground before obstacles
 
-  // Physics
-  private readonly GRAVITY = 0.6;
-  private readonly JUMP_FORCE = -10.5;
-  private readonly BASE_SPEED = 2.5;
-  private readonly MAX_SPEED = 6;
+  // Settings-driven params (read from RunnerSettings singleton)
+  private get TUTORIAL_SAFE_DISTANCE() { return RunnerSettings.tutorialDistance; }
+  private get GRAVITY() { return RunnerSettings.gravity; }
+  private get JUMP_FORCE() { return RunnerSettings.jumpForce; }
+  private get BASE_SPEED() { return RunnerSettings.baseSpeed; }
+  private get MAX_SPEED() { return RunnerSettings.maxSpeed; }
 
   // UI elements
   private multiplierText!: Phaser.GameObjects.Text;
@@ -215,11 +216,13 @@ export class CoinRunnerScene extends Phaser.Scene {
     const w = GAME_CONFIG.WIDTH;
     const difficulty = Math.min(this.segmentCount / 30, 1); // 0..1 over 30 segments
 
-    // Segment length
-    const segLen = Phaser.Math.Between(200, 350);
+    // Segment length - randomized to prevent prediction
+    const segLen = Phaser.Math.Between(150, 400) + Phaser.Math.Between(-30, 30);
+    const gapMin = RunnerSettings.gapSizeMin;
+    const gapMax = RunnerSettings.gapSizeMax;
     const gapBefore = this.segmentCount <= 2 ? 0 : Phaser.Math.Between(
-      40 + difficulty * 20,
-      60 + difficulty * 40
+      gapMin + Math.floor(difficulty * 20),
+      gapMax + Math.floor(difficulty * 40)
     );
 
     const segStartX = this.nextSegmentX + gapBefore;
@@ -268,12 +271,13 @@ export class CoinRunnerScene extends Phaser.Scene {
       seg.coins.push(coin);
     }
 
-    // ENEMIES - gradually introduce types
-    if (this.segmentCount >= 3 && Math.random() < 0.4 + difficulty * 0.4) {
-      const maxEnemyType = Math.min(Math.floor(this.segmentCount / 3), 4); // unlock types over time
+    // ENEMIES - gradually introduce types, density from settings
+    if (this.segmentCount >= 3 && Math.random() < RunnerSettings.enemyDensity * (0.5 + difficulty * 0.5)) {
+      const maxEnemyType = Math.min(Math.floor(this.segmentCount / 3), 4);
       const typeIdx = Phaser.Math.Between(0, maxEnemyType);
       const enemyType = ENEMY_TYPES[typeIdx];
-      const ex = segStartX + Phaser.Math.Between(40, segLen - 40);
+      // Truly random position within segment (anti-bot)
+      const ex = segStartX + Phaser.Math.Between(30, segLen - 30) + Phaser.Math.FloatBetween(-10, 10);
       const ey = this.groundY - 2;
 
       const sprite = this.add.image(ex, ey, enemyType).setScale(1.3).setOrigin(0.5, 1);
@@ -438,9 +442,23 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   private createBottomBar(w: number, h: number): void {
     const y = h - 40;
-    const btnW = (w - 30) / 2;
-    this.makeBtn(10, y, btnW, 32, 'MENU', 0x444444, () => this.scene.start('MenuScene'), '13px');
-    this.makeBtn(15 + btnW, y, btnW, 32, 'AVIATORE', 0x4ecdc4, () => this.scene.start('CrashScene'), '13px');
+    const btnW = (w - 40) / 3;
+    this.makeBtn(10, y, btnW, 32, 'MENU', 0x444444, () => this.scene.start('MenuScene'), '12px');
+    this.makeBtn(15 + btnW, y, btnW, 32, 'AVIATORE', 0x4ecdc4, () => this.scene.start('CrashScene'), '12px');
+    this.makeBtn(20 + btnW * 2, y, btnW, 32, 'CONFIG', 0x8b4513, () => this.openSettings(), '12px');
+  }
+
+  private settingsPanel?: import('../ui/RunnerSettingsPanel').RunnerSettingsPanel;
+
+  private openSettings(): void {
+    if (this.settingsPanel) return;
+    import('../ui/RunnerSettingsPanel').then(({ RunnerSettingsPanel }) => {
+      this.settingsPanel = new RunnerSettingsPanel(this, () => {
+        this.settingsPanel = undefined;
+        // Restart scene when settings change
+        this.scene.restart();
+      });
+    });
   }
 
   private makeBtn(x: number, y: number, bw: number, bh: number, label: string, color: number, onClick: () => void, fontSize = '16px'): Phaser.GameObjects.Container {
@@ -728,17 +746,22 @@ export class CoinRunnerScene extends Phaser.Scene {
       }
     }
 
-    // Speed increases over time
+    // Speed: stays at BASE_SPEED until multiplier > 10x, then gentle increase
     if (this.phase === 'running') {
-      this.worldSpeed = Math.min(this.MAX_SPEED, this.BASE_SPEED + this.distanceTraveled * 0.001);
+      if (this.currentMultiplier >= RunnerSettings.speedThreshold) {
+        const excess = this.currentMultiplier - RunnerSettings.speedThreshold;
+        this.worldSpeed = Math.min(this.MAX_SPEED, this.BASE_SPEED + excess * RunnerSettings.speedScaling);
+      } else {
+        this.worldSpeed = this.BASE_SPEED;
+      }
     }
 
     const speed = this.worldSpeed * dt;
     this.scrollOffset += speed;
     this.distanceTraveled += speed;
 
-    // Update multiplier
-    this.currentMultiplier = 1 + this.distanceTraveled * 0.004 + this.coinsCollected * 0.08;
+    // Update multiplier (slow growth)
+    this.currentMultiplier = 1 + this.distanceTraveled * RunnerSettings.multiplierPerDistance + this.coinsCollected * RunnerSettings.multiplierPerCoin;
     this.currentMultiplier = Math.floor(this.currentMultiplier * 100) / 100;
 
     let mColor = '#ffd700';
@@ -937,7 +960,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     // Spawn Bullet Bills periodically in running phase
     if (this.phase === 'running' && this.segmentCount >= 10) {
       this.bulletTimer += delta;
-      if (this.bulletTimer > 5000 - Math.min(this.segmentCount * 100, 3000)) {
+      if (this.bulletTimer > RunnerSettings.bulletInterval - Math.min(this.segmentCount * 100, 3000)) {
         this.bulletTimer = 0;
         const by = this.groundY - Phaser.Math.Between(30, 80);
         const bullet = this.add.image(GAME_CONFIG.WIDTH + 20, by, 'enemy_bullet')
@@ -954,13 +977,14 @@ export class CoinRunnerScene extends Phaser.Scene {
     // === SCROLL WORLD ===
     this.scrollWorld(speed);
 
-    // Run animation
+    // Run animation - cycle walk frames (never flipX, always face right)
     if (this.isOnGround) {
       this.runTimer += delta;
       if (this.runTimer > 120) {
         this.runTimer = 0;
-        this.runFrame = (this.runFrame + 1) % 2;
-        this.runner.setFlipX(this.runFrame === 1);
+        this.runFrame = (this.runFrame + 1) % 4;
+        const walkTextures = ['runner_walk1', 'runner', 'runner_walk2', 'runner'];
+        this.runner.setTexture(walkTextures[this.runFrame]);
       }
     }
 
