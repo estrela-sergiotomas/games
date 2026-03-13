@@ -213,14 +213,14 @@ export class CoinRunnerScene extends Phaser.Scene {
     };
 
     for (let x = 0; x < seg.endX + 64; x += 32) {
-      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0);
+      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0).setDepth(10);
       seg.grounds.push(tile);
     }
 
     // Tutorial coins (silver, worth 0.001x each)
     for (let i = 0; i < 5; i++) {
       const cx = 250 + i * 40;
-      const coin = this.add.image(cx, this.groundY - 20, 'coin_tutorial').setScale(1.3);
+      const coin = this.add.image(cx, this.groundY - 20, 'coin_tutorial').setScale(1.3).setDepth(12);
       this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       seg.coins.push({ sprite: coin, premium: false, tutorial: true });
     }
@@ -234,7 +234,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.runner = this.add.image(this.runnerBaseX, this.groundY - 2, 'runner')
       .setScale(2)
       .setOrigin(0.5, 1)
-      .setDepth(50);
+      .setDepth(6); // behind pipes for "entering pipe" effect
   }
 
   // === SEGMENT GENERATION ===
@@ -288,7 +288,7 @@ export class CoinRunnerScene extends Phaser.Scene {
 
     // Ground tiles
     for (let x = segStartX; x < segEndX; x += 32) {
-      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0);
+      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0).setDepth(10);
       seg.grounds.push(tile);
     }
 
@@ -297,14 +297,14 @@ export class CoinRunnerScene extends Phaser.Scene {
       const platX = segStartX - gapBefore / 2 - 28;
       const platY = this.groundY - Phaser.Math.Between(30, 50);
       const platW = Math.max(64, gapBefore * 0.6);
-      const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16);
+      const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16).setDepth(9);
       seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW });
 
       // Coins above platform
       for (let c = 0; c < 2; c++) {
         const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
         const tex = isPremium ? 'coin_premium' : 'coin';
-        const coin = this.add.image(platX + 15 + c * 20, platY - 20, tex).setScale(isPremium ? 1.4 : 1.2);
+        const coin = this.add.image(platX + 15 + c * 20, platY - 20, tex).setScale(isPremium ? 1.4 : 1.2).setDepth(12);
         this.tweens.add({ targets: coin, y: platY - 25, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
         seg.coins.push({ sprite: coin, premium: isPremium });
       }
@@ -317,7 +317,7 @@ export class CoinRunnerScene extends Phaser.Scene {
         const cx = segStartX + Phaser.Math.Between(20, segLen - 20);
         const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
         const tex = isPremium ? 'coin_premium' : 'coin';
-        const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 1.4 : 1.2);
+        const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 1.4 : 1.2).setDepth(12);
         this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 500 + c * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
         seg.coins.push({ sprite: coin, premium: isPremium });
       }
@@ -332,7 +332,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       const ex = segStartX + Phaser.Math.Between(30, segLen - 30) + Phaser.Math.FloatBetween(-10, 10);
       const ey = this.groundY - 2;
 
-      const sprite = this.add.image(ex, ey, enemyType).setScale(1.3).setOrigin(0.5, 1);
+      const sprite = this.add.image(ex, ey, enemyType).setScale(1.3).setOrigin(0.5, 1).setDepth(11);
 
       // Patrol behavior for ground enemies
       if (typeIdx <= 3) { // goomba, koopa, spiny, bobomb
@@ -359,12 +359,12 @@ export class CoinRunnerScene extends Phaser.Scene {
     // PIPES with optional piranha
     if (this.segmentCount >= 5 && Math.random() < 0.3 + difficulty * 0.2) {
       const px = segStartX + Phaser.Math.Between(segLen * 0.4, segLen * 0.8);
-      const pipe = this.add.image(px, this.groundY - 36, 'pipe').setScale(1.2).setOrigin(0.5, 0);
+      const pipe = this.add.image(px, this.groundY - 36, 'pipe').setScale(1.2).setOrigin(0.5, 0).setDepth(8);
       const pipeData: Segment['pipes'][0] = { sprite: pipe };
 
       // Piranha plant pops from pipe
       if (this.segmentCount >= 8 && Math.random() < 0.5) {
-        const piranha = this.add.image(px, this.groundY - 60, 'enemy_piranha').setScale(1.3).setOrigin(0.5, 1);
+        const piranha = this.add.image(px, this.groundY - 60, 'enemy_piranha').setScale(1.3).setOrigin(0.5, 1).setDepth(7);
         const baseY = this.groundY - 60;
         this.tweens.add({
           targets: piranha,
@@ -391,7 +391,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       );
       const isMagic = Math.random() < challengeChance;
       const tex = isMagic ? 'magic_block' : 'qblock';
-      const qblock = this.add.image(qx, qy, tex).setScale(1.4);
+      const qblock = this.add.image(qx, qy, tex).setScale(1.4).setDepth(12);
       if (isMagic) {
         // Pulsing glow for magic blocks
         this.tweens.add({ targets: qblock, alpha: 0.6, duration: 400, yoyo: true, repeat: -1 });
@@ -403,7 +403,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     if (Math.random() < 0.1 && this.segmentCount > 5) {
       const mx = segStartX + Phaser.Math.Between(20, segLen - 20);
       const my = this.groundY - 20;
-      const mush = this.add.image(mx, my, 'mushroom').setScale(1.3);
+      const mush = this.add.image(mx, my, 'mushroom').setScale(1.3).setDepth(12);
       this.tweens.add({ targets: mush, y: my - 8, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       seg.mushrooms.push(mush);
     }
@@ -412,7 +412,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     if (Math.random() < RunnerSettings.poisonMushroomChance && this.segmentCount > 4) {
       const px2 = segStartX + Phaser.Math.Between(20, segLen - 20);
       const py2 = this.groundY - 20;
-      const poison = this.add.image(px2, py2, 'mushroom_poison').setScale(1.3);
+      const poison = this.add.image(px2, py2, 'mushroom_poison').setScale(1.3).setDepth(12);
       this.tweens.add({ targets: poison, y: py2 - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       seg.poisonMushrooms.push(poison);
     }
@@ -422,14 +422,14 @@ export class CoinRunnerScene extends Phaser.Scene {
       const platX = segStartX + Phaser.Math.Between(20, segLen - 80);
       const platY = this.groundY - Phaser.Math.Between(50, 80);
       const platW = Phaser.Math.Between(48, 80);
-      const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16);
+      const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16).setDepth(9);
       seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW });
 
       // Coins on elevated platform
       for (let c = 0; c < 2; c++) {
         const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
         const tex = isPremium ? 'coin_premium' : 'coin';
-        const coin = this.add.image(platX + 10 + c * 22, platY - 18, tex).setScale(isPremium ? 1.4 : 1.2);
+        const coin = this.add.image(platX + 10 + c * 22, platY - 18, tex).setScale(isPremium ? 1.4 : 1.2).setDepth(12);
         this.tweens.add({ targets: coin, y: platY - 23, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
         seg.coins.push({ sprite: coin, premium: isPremium });
       }
@@ -756,7 +756,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.cashoutPipe = this.add.image(pipeX, this.groundY, 'pipe_large')
       .setScale(1.5)
       .setOrigin(0.5, 1)
-      .setDepth(45);
+      .setDepth(8);
 
     // Pipe rises from ground
     this.cashoutPipe.y = this.groundY + 80;
@@ -1043,6 +1043,9 @@ export class CoinRunnerScene extends Phaser.Scene {
     const runnerFeetY = this.runner.y;
     const runnerX = this.runner.x;
 
+    // Landing tolerance scales with fall speed to prevent passing through ground
+    const landTolerance = Math.max(14, Math.abs(this.velocityY * dt) + 6);
+
     // Check ground tiles
     for (const seg of this.segments) {
       for (const g of seg.grounds) {
@@ -1052,7 +1055,7 @@ export class CoinRunnerScene extends Phaser.Scene {
         const gTop = g.y;
 
         if (runnerX >= gLeft - 5 && runnerX <= gRight + 5) {
-          if (this.velocityY >= 0 && runnerFeetY >= gTop - 2 && runnerFeetY <= gTop + 10) {
+          if (this.velocityY >= 0 && runnerFeetY >= gTop - 4 && runnerFeetY <= gTop + landTolerance) {
             this.runner.y = gTop;
             this.land();
             landed = true;
@@ -1064,7 +1067,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       for (const p of seg.platforms) {
         if (!p.sprite.active) continue;
         if (runnerX >= p.sprite.x - 5 && runnerX <= p.sprite.x + p.w + 5) {
-          if (this.velocityY >= 0 && runnerFeetY >= p.y - 2 && runnerFeetY <= p.y + 12) {
+          if (this.velocityY >= 0 && runnerFeetY >= p.y - 4 && runnerFeetY <= p.y + landTolerance) {
             this.runner.y = p.y;
             this.land();
             landed = true;

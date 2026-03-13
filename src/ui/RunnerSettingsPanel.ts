@@ -140,7 +140,7 @@ export class RunnerSettingsPanel {
       y += rowH;
     }
 
-    // Scroll support (wheel + touch drag)
+    // Scroll support (wheel + touch drag via scene pointer - does not block buttons)
     const maxScroll = Math.max(0, y - contentY - contentH);
 
     const applyScroll = () => {
@@ -153,21 +153,28 @@ export class RunnerSettingsPanel {
       applyScroll();
     });
 
-    // Touch drag scroll
-    const scrollHit = this.scene.add.rectangle(w / 2, contentY + contentH / 2, pw, contentH)
-      .setInteractive({ draggable: true });
-    this.container.add(scrollHit);
-
+    // Touch drag scroll via scene pointer events (no blocking overlay)
+    let dragging = false;
     let dragStartY = 0;
     let dragScrollStart = 0;
-    scrollHit.on('dragstart', (_p: Phaser.Input.Pointer) => {
-      dragStartY = _p.y;
-      dragScrollStart = this.scrollY;
+
+    this.scene.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
+      if (p.x >= px && p.x <= px + pw && p.y >= contentY && p.y <= contentY + contentH) {
+        dragging = true;
+        dragStartY = p.y;
+        dragScrollStart = this.scrollY;
+      }
     });
-    scrollHit.on('drag', (_p: Phaser.Input.Pointer) => {
-      this.scrollY = dragScrollStart + (_p.y - dragStartY);
-      applyScroll();
+    this.scene.input.on('pointermove', (p: Phaser.Input.Pointer) => {
+      if (dragging && p.isDown) {
+        const dy = p.y - dragStartY;
+        if (Math.abs(dy) > 5) { // small dead zone to not interfere with taps
+          this.scrollY = dragScrollStart + dy;
+          applyScroll();
+        }
+      }
     });
+    this.scene.input.on('pointerup', () => { dragging = false; });
 
     // Bottom buttons
     const btnY = py + ph - 50;
