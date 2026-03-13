@@ -8,9 +8,12 @@ export class SynthMusic {
   private isPlaying = false;
   private oscillators: OscillatorNode[] = [];
   private intervalIds: number[] = [];
+  private userWantsMusic = false;
+  private visibilityBound = false;
 
   start(): void {
     if (this.isPlaying) return;
+    this.userWantsMusic = true;
 
     this.ctx = new AudioContext();
     this.gainNode = this.ctx.createGain();
@@ -22,9 +25,27 @@ export class SynthMusic {
     this.playArpeggio();
     this.playPad();
     this.playDrums();
+
+    if (!this.visibilityBound) {
+      this.visibilityBound = true;
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          // Tab hidden: pause music but keep game running
+          if (this.isPlaying) this.stopInternal();
+        } else {
+          // Tab visible: resume if user wants music
+          if (this.userWantsMusic && !this.isPlaying) this.start();
+        }
+      });
+    }
   }
 
   stop(): void {
+    this.userWantsMusic = false;
+    this.stopInternal();
+  }
+
+  private stopInternal(): void {
     this.isPlaying = false;
     this.oscillators.forEach(o => { try { o.stop(); } catch {} });
     this.oscillators = [];

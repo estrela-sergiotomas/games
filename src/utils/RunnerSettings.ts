@@ -21,6 +21,9 @@ export const RunnerSettings = {
   // Magic blocks
   magicBlockChance: 0.05, // 5% chance a qblock is magic (challenge block)
 
+  // Poison mushroom
+  poisonMushroomChance: 0.08, // 8% chance per segment
+
   // Difficulty
   enemyDensity: 0.8, // 0-1 scale, higher = more enemies
   gapSizeMin: 40,
@@ -44,6 +47,7 @@ export const RunnerSettings = {
     RunnerSettings.premiumCoinValue = 1.0;
     RunnerSettings.premiumCoinChance = 0.08;
     RunnerSettings.magicBlockChance = 0.05;
+    RunnerSettings.poisonMushroomChance = 0.08;
     RunnerSettings.enemyDensity = 0.8;
     RunnerSettings.gapSizeMin = 40;
     RunnerSettings.gapSizeMax = 60;

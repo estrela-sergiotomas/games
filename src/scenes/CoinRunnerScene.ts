@@ -36,6 +36,7 @@ interface Segment {
   pipes: { sprite: Phaser.GameObjects.Image; piranha?: Phaser.GameObjects.Image; piranhaBaseY?: number }[];
   qblocks: { sprite: Phaser.GameObjects.Image; hit: boolean; magic: boolean }[];
   mushrooms: Phaser.GameObjects.Image[];
+  poisonMushrooms: Phaser.GameObjects.Image[];
   startX: number;
   endX: number;
 }
@@ -190,6 +191,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       pipes: [],
       qblocks: [],
       mushrooms: [],
+      poisonMushrooms: [],
       startX: 0,
       endX: w + this.TUTORIAL_SAFE_DISTANCE,
     };
@@ -247,6 +249,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       pipes: [],
       qblocks: [],
       mushrooms: [],
+      poisonMushrooms: [],
       startX: segStartX,
       endX: segEndX,
     };
@@ -364,6 +367,15 @@ export class CoinRunnerScene extends Phaser.Scene {
       const mush = this.add.image(mx, my, 'mushroom').setScale(1.3);
       this.tweens.add({ targets: mush, y: my - 8, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
       seg.mushrooms.push(mush);
+    }
+
+    // Poison mushroom (loses half of gained multiplier!)
+    if (Math.random() < RunnerSettings.poisonMushroomChance && this.segmentCount > 4) {
+      const px2 = segStartX + Phaser.Math.Between(20, segLen - 20);
+      const py2 = this.groundY - 20;
+      const poison = this.add.image(px2, py2, 'mushroom_poison').setScale(1.3);
+      this.tweens.add({ targets: poison, y: py2 - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      seg.poisonMushrooms.push(poison);
     }
 
     // Elevated platforms on the segment
@@ -782,7 +794,9 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.scrollOffset += speed;
     this.distanceTraveled += speed;
 
-    // Multiplier is coin-based only (no distance component)
+    // Multiplier: coin-based gains + tiny distance bonus so it never feels "stuck"
+    // Distance adds a very slow passive gain (0.0002 per unit = ~0.01x per second)
+    this.currentMultiplier += this.worldSpeed * dt * 0.0002;
     this.currentMultiplier = Math.floor(this.currentMultiplier * 100) / 100;
 
     let mColor = '#ffd700';
@@ -1007,6 +1021,28 @@ export class CoinRunnerScene extends Phaser.Scene {
           SoundFX.playCashOut();
         }
       }
+
+      // Poison mushrooms - lose half of gained multiplier!
+      for (let i = seg.poisonMushrooms.length - 1; i >= 0; i--) {
+        const pm = seg.poisonMushrooms[i];
+        if (!pm.active) continue;
+        if (this.overlap(this.runner, pm, 20, 22)) {
+          const gained = this.currentMultiplier - 1;
+          const loss = gained / 2;
+          this.currentMultiplier = Math.max(1, this.currentMultiplier - loss);
+          // Visual feedback
+          const lossLabel = this.add.text(pm.x, pm.y - 20, `-${loss.toFixed(2)}x`, {
+            fontSize: '18px', fontFamily: 'Arial', color: '#ff0000', fontStyle: 'bold',
+          }).setOrigin(0.5).setDepth(200);
+          this.tweens.add({ targets: lossLabel, y: lossLabel.y - 50, alpha: 0, duration: 1000, onComplete: () => lossLabel.destroy() });
+          // Poison effect on runner
+          this.tweens.add({ targets: this.runner, tint: 0x6600aa, duration: 100, yoyo: true, repeat: 5 });
+          this.tweens.add({ targets: pm, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => pm.destroy() });
+          seg.poisonMushrooms.splice(i, 1);
+          SoundFX.playExplosion();
+          this.statusText.setText('Cogumelo podre! Perdeu metade do mult.!');
+        }
+      }
     }
 
     // Bullet Bills (check collision)
@@ -1198,6 +1234,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       });
       seg.qblocks.forEach(q => { if (q.sprite.active) q.sprite.x -= speed; });
       seg.mushrooms.forEach(m => { if (m.active) m.x -= speed; });
+      seg.poisonMushrooms.forEach(m => { if (m.active) m.x -= speed; });
 
       // Remove off-screen segments
       const rightmost = Math.max(
@@ -1214,6 +1251,7 @@ export class CoinRunnerScene extends Phaser.Scene {
         seg.pipes.forEach(p => { p.sprite.destroy(); p.piranha?.destroy(); });
         seg.qblocks.forEach(q => q.sprite.destroy());
         seg.mushrooms.forEach(m => m.destroy());
+        seg.poisonMushrooms.forEach(m => m.destroy());
         this.segments.splice(i, 1);
       }
     }

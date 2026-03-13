@@ -10,6 +10,10 @@ export class MenuScene extends Phaser.Scene {
   }
 
   create(): void {
+    // Stop music when returning to menu (prevents overlap)
+    synthMusic.stop();
+    this.musicOn = false;
+
     const w = GAME_CONFIG.WIDTH;
     const h = GAME_CONFIG.HEIGHT;
     const cx = w / 2;

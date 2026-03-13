@@ -17,6 +17,7 @@ export class RunnerSprites {
     this.generatePipe(scene);
     this.generatePipeLarge(scene);
     this.generateMushroom(scene);
+    this.generatePoisonMushroom(scene);
     this.generateGround(scene);
     this.generateGoomba(scene);
     this.generateKoopa(scene);
@@ -223,6 +224,19 @@ export class RunnerSprites {
     g.fillStyle(0xfab882); g.fillRect(5, 10, 10, 6);
     g.fillStyle(0x000000); g.fillRect(6, 11, 2, 2); g.fillRect(12, 11, 2, 2);
     g.generateTexture('mushroom', 20, 16); g.destroy();
+  }
+
+  private static generatePoisonMushroom(scene: Phaser.Scene): void {
+    const g = scene.make.graphics({ x: 0, y: 0 });
+    // Purple/dark mushroom with skull-like face
+    g.fillStyle(0x6600aa); g.fillCircle(10, 6, 8);
+    g.fillStyle(0x9933cc); g.fillCircle(6, 4, 3); g.fillCircle(14, 4, 3);
+    g.fillStyle(0x442266); g.fillRect(5, 10, 10, 6);
+    // X eyes
+    g.fillStyle(0xff0000); g.fillRect(6, 11, 2, 2); g.fillRect(12, 11, 2, 2);
+    // Skull mouth
+    g.fillStyle(0x000000); g.fillRect(8, 14, 4, 2);
+    g.generateTexture('mushroom_poison', 20, 16); g.destroy();
   }
 
   // === 6 ENEMY TYPES ===
