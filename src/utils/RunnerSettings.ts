@@ -5,11 +5,11 @@
 export const RunnerSettings = {
   // Physics
   gravity: 0.3,
-  jumpForce: -11.5,
+  jumpForce: -14.0,
 
   // Speed
-  baseSpeed: 2.5,
-  maxSpeed: 4.5,
+  baseSpeed: 3.0,
+  maxSpeed: 8.0,
   speedThreshold: 10, // multiplier value where speed starts increasing
   speedScaling: 0.15, // how fast speed increases after threshold
 
@@ -41,9 +41,9 @@ export const RunnerSettings = {
   // Reset to defaults
   reset(): void {
     RunnerSettings.gravity = 0.3;
-    RunnerSettings.jumpForce = -11.5;
-    RunnerSettings.baseSpeed = 2.5;
-    RunnerSettings.maxSpeed = 4.5;
+    RunnerSettings.jumpForce = -14.0;
+    RunnerSettings.baseSpeed = 3.0;
+    RunnerSettings.maxSpeed = 8.0;
     RunnerSettings.speedThreshold = 10;
     RunnerSettings.speedScaling = 0.15;
     RunnerSettings.multiplierPerCoin = 0.01;
