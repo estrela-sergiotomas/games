@@ -23,22 +23,19 @@ interface EnemyData {
   dead: boolean;
 }
 
+interface CoinData {
+  sprite: Phaser.GameObjects.Image;
+  premium: boolean;
+}
+
 interface Segment {
-  // Ground tiles for this segment
   grounds: Phaser.GameObjects.Image[];
-  // Floating platforms
   platforms: { sprite: Phaser.GameObjects.Image; x: number; y: number; w: number }[];
-  // Coins
-  coins: Phaser.GameObjects.Image[];
-  // Enemies
+  coins: CoinData[];
   enemies: EnemyData[];
-  // Pipes (with optional piranha)
   pipes: { sprite: Phaser.GameObjects.Image; piranha?: Phaser.GameObjects.Image; piranhaBaseY?: number }[];
-  // Question blocks
-  qblocks: { sprite: Phaser.GameObjects.Image; hit: boolean }[];
-  // Mushrooms
+  qblocks: { sprite: Phaser.GameObjects.Image; hit: boolean; magic: boolean }[];
   mushrooms: Phaser.GameObjects.Image[];
-  // World x start/end
   startX: number;
   endX: number;
 }
@@ -100,6 +97,13 @@ export class CoinRunnerScene extends Phaser.Scene {
   private bulletTimer = 0;
   private bullets: EnemyData[] = [];
 
+  // Challenge state (magic block)
+  private challengeActive = false;
+  private challengeTarget = 0;
+  private challengeUI?: Phaser.GameObjects.Container;
+  private challengeGoalText?: Phaser.GameObjects.Text;
+  private frozen = false; // world frozen during challenge popup
+
   constructor() {
     super({ key: 'CoinRunnerScene' });
   }
@@ -130,6 +134,11 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.clouds = [];
     this.bullets = [];
     this.bulletTimer = 0;
+    this.challengeActive = false;
+    this.challengeTarget = 0;
+    this.challengeUI = undefined;
+    this.challengeGoalText = undefined;
+    this.frozen = false;
 
     this.createBackground(w, h);
     this.createInitialGround(w);
@@ -195,7 +204,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       const cx = 250 + i * 40;
       const coin = this.add.image(cx, this.groundY - 20, 'coin').setScale(1.3);
       this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      seg.coins.push(coin);
+      seg.coins.push({ sprite: coin, premium: false });
     }
 
     this.segments.push(seg);
@@ -220,10 +229,12 @@ export class CoinRunnerScene extends Phaser.Scene {
     const segLen = Phaser.Math.Between(150, 400) + Phaser.Math.Between(-30, 30);
     const gapMin = RunnerSettings.gapSizeMin;
     const gapMax = RunnerSettings.gapSizeMax;
-    const gapBefore = this.segmentCount <= 2 ? 0 : Phaser.Math.Between(
-      gapMin + Math.floor(difficulty * 20),
-      gapMax + Math.floor(difficulty * 40)
-    );
+    // Cap gap to max jumpable distance (never impossible)
+    const maxJumpable = 120;
+    const gapBefore = this.segmentCount <= 2 ? 0 : Math.min(maxJumpable, Phaser.Math.Between(
+      gapMin + Math.floor(difficulty * 15),
+      gapMax + Math.floor(difficulty * 25)
+    ));
 
     const segStartX = this.nextSegmentX + gapBefore;
     const segEndX = segStartX + segLen;
@@ -246,29 +257,33 @@ export class CoinRunnerScene extends Phaser.Scene {
       seg.grounds.push(tile);
     }
 
-    // Add a floating platform above the gap (if there's a gap)
-    if (gapBefore > 50) {
+    // ALWAYS add a floating platform above the gap (makes gap jumpable)
+    if (gapBefore > 30) {
       const platX = segStartX - gapBefore / 2 - 32;
-      const platY = this.groundY - Phaser.Math.Between(40, 70);
-      const platW = Math.max(48, 80 - difficulty * 20);
+      const platY = this.groundY - Phaser.Math.Between(35, 60);
+      const platW = Math.max(56, 90 - difficulty * 15);
       const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16);
       seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW });
 
       // Coins above platform
       for (let c = 0; c < 2; c++) {
-        const coin = this.add.image(platX + 15 + c * 20, platY - 20, 'coin').setScale(1.2);
+        const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
+        const tex = isPremium ? 'coin_premium' : 'coin';
+        const coin = this.add.image(platX + 15 + c * 20, platY - 20, tex).setScale(isPremium ? 1.4 : 1.2);
         this.tweens.add({ targets: coin, y: platY - 25, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        seg.coins.push(coin);
+        seg.coins.push({ sprite: coin, premium: isPremium });
       }
     }
 
-    // Add coins on the ground
+    // Add coins on the ground (some may be premium)
     const numCoins = Phaser.Math.Between(2, 4);
     for (let c = 0; c < numCoins; c++) {
       const cx = segStartX + Phaser.Math.Between(20, segLen - 20);
-      const coin = this.add.image(cx, this.groundY - 20, 'coin').setScale(1.2);
+      const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
+      const tex = isPremium ? 'coin_premium' : 'coin';
+      const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 1.4 : 1.2);
       this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 500 + c * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      seg.coins.push(coin);
+      seg.coins.push({ sprite: coin, premium: isPremium });
     }
 
     // ENEMIES - gradually introduce types, density from settings
@@ -328,12 +343,18 @@ export class CoinRunnerScene extends Phaser.Scene {
       seg.pipes.push(pipeData);
     }
 
-    // Question blocks
+    // Question blocks (some may be magic challenge blocks)
     if (Math.random() < 0.3) {
       const qx = segStartX + Phaser.Math.Between(30, segLen - 30);
       const qy = this.groundY - Phaser.Math.Between(55, 75);
-      const qblock = this.add.image(qx, qy, 'qblock').setScale(1.4);
-      seg.qblocks.push({ sprite: qblock, hit: false });
+      const isMagic = Math.random() < RunnerSettings.magicBlockChance;
+      const tex = isMagic ? 'magic_block' : 'qblock';
+      const qblock = this.add.image(qx, qy, tex).setScale(1.4);
+      if (isMagic) {
+        // Pulsing glow for magic blocks
+        this.tweens.add({ targets: qblock, alpha: 0.6, duration: 400, yoyo: true, repeat: -1 });
+      }
+      seg.qblocks.push({ sprite: qblock, hit: false, magic: isMagic });
     }
 
     // Mushroom power-up (rare)
@@ -355,9 +376,11 @@ export class CoinRunnerScene extends Phaser.Scene {
 
       // Coins on elevated platform
       for (let c = 0; c < 2; c++) {
-        const coin = this.add.image(platX + 10 + c * 22, platY - 18, 'coin').setScale(1.2);
+        const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
+        const tex = isPremium ? 'coin_premium' : 'coin';
+        const coin = this.add.image(platX + 10 + c * 22, platY - 18, tex).setScale(isPremium ? 1.4 : 1.2);
         this.tweens.add({ targets: coin, y: platY - 23, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        seg.coins.push(coin);
+        seg.coins.push({ sprite: coin, premium: isPremium });
       }
     }
 
@@ -566,7 +589,7 @@ export class CoinRunnerScene extends Phaser.Scene {
   }
 
   private cashOut(): void {
-    if ((this.phase !== 'running' && this.phase !== 'tutorial') || this.isDead) return;
+    if ((this.phase !== 'running' && this.phase !== 'tutorial') || this.isDead || this.challengeActive) return;
 
     this.phase = 'cashout_anim';
     this.setCashoutEnabled(false);
@@ -733,20 +756,19 @@ export class CoinRunnerScene extends Phaser.Scene {
   // === UPDATE LOOP ===
   update(_time: number, delta: number): void {
     if (this.phase === 'betting' || this.phase === 'result' || this.phase === 'cashout_anim') return;
-    if (this.isDead) return;
+    if (this.isDead || this.frozen) return;
 
     const dt = delta / 16.67;
 
     // Tutorial → Running transition
     if (this.phase === 'tutorial') {
       this.tutorialTimer += delta;
-      // After safe distance or 6 seconds, transition to real game
       if (this.distanceTraveled >= this.TUTORIAL_SAFE_DISTANCE || this.tutorialTimer > 6000) {
         this.endTutorial();
       }
     }
 
-    // Speed: stays at BASE_SPEED until multiplier > 10x, then gentle increase
+    // Speed: stays at BASE_SPEED until multiplier > threshold, then gentle increase
     if (this.phase === 'running') {
       if (this.currentMultiplier >= RunnerSettings.speedThreshold) {
         const excess = this.currentMultiplier - RunnerSettings.speedThreshold;
@@ -760,8 +782,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.scrollOffset += speed;
     this.distanceTraveled += speed;
 
-    // Update multiplier (slow growth)
-    this.currentMultiplier = 1 + this.distanceTraveled * RunnerSettings.multiplierPerDistance + this.coinsCollected * RunnerSettings.multiplierPerCoin;
+    // Multiplier is coin-based only (no distance component)
     this.currentMultiplier = Math.floor(this.currentMultiplier * 100) / 100;
 
     let mColor = '#ffd700';
@@ -771,6 +792,30 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.multiplierText.setText(`${this.currentMultiplier.toFixed(2)}x`);
     this.multiplierText.setColor(mColor);
     this.coinsText.setText(`Moedas: ${this.coinsCollected}`);
+
+    // Check challenge target reached
+    if (this.challengeActive && this.currentMultiplier >= this.challengeTarget) {
+      this.challengeActive = false;
+      this.setCashoutEnabled(true);
+      if (this.challengeGoalText) {
+        this.challengeGoalText.setText('META ATINGIDA!').setColor('#00ff00');
+        this.tweens.add({ targets: this.challengeGoalText, alpha: 0, duration: 3000, onComplete: () => this.challengeGoalText?.destroy() });
+      }
+      // Flash celebration
+      const w = GAME_CONFIG.WIDTH;
+      const celebrate = this.add.text(w / 2, this.groundY - 100, 'META ATINGIDA!', {
+        fontSize: '24px', fontFamily: 'Arial', color: '#00ff00', fontStyle: 'bold',
+        backgroundColor: '#000000cc', padding: { x: 15, y: 8 },
+      }).setOrigin(0.5).setDepth(200);
+      this.tweens.add({ targets: celebrate, alpha: 0, y: celebrate.y - 50, duration: 2000, onComplete: () => celebrate.destroy() });
+      SoundFX.playCashOut();
+    }
+
+    // Update challenge goal display
+    if (this.challengeActive && this.challengeGoalText) {
+      const progress = Math.min(100, (this.currentMultiplier / this.challengeTarget) * 100);
+      this.challengeGoalText.setText(`META: ${this.challengeTarget}x (${progress.toFixed(0)}%)`);
+    }
 
     // === PHYSICS ===
     // Gravity
@@ -851,11 +896,23 @@ export class CoinRunnerScene extends Phaser.Scene {
     for (const seg of this.segments) {
       // Coins
       for (let i = seg.coins.length - 1; i >= 0; i--) {
-        const c = seg.coins[i];
-        if (!c.active) continue;
-        if (this.overlap(this.runner, c, 22, 28)) {
+        const cd = seg.coins[i];
+        if (!cd.sprite.active) continue;
+        if (this.overlap(this.runner, cd.sprite, 22, 28)) {
           this.coinsCollected++;
-          this.tweens.add({ targets: c, y: c.y - 30, alpha: 0, scaleX: 0, duration: 300, onComplete: () => c.destroy() });
+          if (cd.premium) {
+            // Premium coin: +1x
+            this.currentMultiplier += RunnerSettings.premiumCoinValue;
+            // Big visual feedback
+            const label = this.add.text(cd.sprite.x, cd.sprite.y - 20, `+${RunnerSettings.premiumCoinValue.toFixed(1)}x`, {
+              fontSize: '18px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
+            }).setOrigin(0.5).setDepth(200);
+            this.tweens.add({ targets: label, y: label.y - 50, alpha: 0, duration: 800, onComplete: () => label.destroy() });
+          } else {
+            // Normal coin: +0.10x
+            this.currentMultiplier += RunnerSettings.multiplierPerCoin;
+          }
+          this.tweens.add({ targets: cd.sprite, y: cd.sprite.y - 30, alpha: 0, scaleX: 0, duration: 300, onComplete: () => cd.sprite.destroy() });
           seg.coins.splice(i, 1);
           SoundFX.playCashOut();
         }
@@ -873,6 +930,7 @@ export class CoinRunnerScene extends Phaser.Scene {
             this.velocityY = -7;
             this.isOnGround = false;
             this.coinsCollected += 2;
+            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 2;
             SoundFX.playBetTick();
           } else {
             this.die();
@@ -919,11 +977,20 @@ export class CoinRunnerScene extends Phaser.Scene {
           q.hit = true;
           this.tweens.add({ targets: q.sprite, y: q.sprite.y - 8, duration: 100, yoyo: true });
           q.sprite.setTint(0x888888);
-          this.coinsCollected += 3;
-          SoundFX.playCashOut();
-          const burst = this.add.image(q.sprite.x, q.sprite.y - 15, 'coin').setScale(1.5);
-          this.tweens.add({ targets: burst, y: burst.y - 40, alpha: 0, duration: 500, onComplete: () => burst.destroy() });
           this.velocityY = 2;
+
+          if (q.magic) {
+            // MAGIC BLOCK: freeze and show challenge
+            SoundFX.playBetTick();
+            this.showMagicChallenge();
+          } else {
+            // Normal block: coins + multiplier
+            this.coinsCollected += 3;
+            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 3;
+            SoundFX.playCashOut();
+            const burst = this.add.image(q.sprite.x, q.sprite.y - 15, 'coin').setScale(1.5);
+            this.tweens.add({ targets: burst, y: burst.y - 40, alpha: 0, duration: 500, onComplete: () => burst.destroy() });
+          }
         }
       }
 
@@ -933,6 +1000,7 @@ export class CoinRunnerScene extends Phaser.Scene {
         if (!m.active) continue;
         if (this.overlap(this.runner, m, 20, 22)) {
           this.coinsCollected += 5;
+          this.currentMultiplier += RunnerSettings.multiplierPerCoin * 5;
           this.tweens.add({ targets: m, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => m.destroy() });
           seg.mushrooms.splice(i, 1);
           this.tweens.add({ targets: this.runner, alpha: 0.5, duration: 100, yoyo: true, repeat: 5 });
@@ -994,6 +1062,121 @@ export class CoinRunnerScene extends Phaser.Scene {
     }
   }
 
+  // === MAGIC BLOCK CHALLENGE ===
+  private showMagicChallenge(): void {
+    this.frozen = true;
+    const w = GAME_CONFIG.WIDTH;
+
+    // Calculate challenge target: next round number above current multiplier
+    let target: number;
+    if (this.currentMultiplier < 2) target = 5;
+    else if (this.currentMultiplier < 5) target = 10;
+    else if (this.currentMultiplier < 10) target = 20;
+    else if (this.currentMultiplier < 20) target = 30;
+    else target = Math.ceil(this.currentMultiplier / 10) * 10 + 10;
+
+    const container = this.add.container(0, 0).setDepth(400);
+    this.challengeUI = container;
+
+    // Semi-transparent overlay
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.65);
+    overlay.fillRect(0, 0, w, GAME_CONFIG.HEIGHT);
+    container.add(overlay);
+
+    // Panel
+    const panelW = w - 40;
+    const panelH = 260;
+    const px = 20;
+    const py = (GAME_CONFIG.HEIGHT - panelH) / 2 - 50;
+
+    const panel = this.add.graphics();
+    panel.fillStyle(0x1a0a3e);
+    panel.fillRoundedRect(px, py, panelW, panelH, 16);
+    panel.lineStyle(3, 0x9933ff);
+    panel.strokeRoundedRect(px, py, panelW, panelH, 16);
+    container.add(panel);
+
+    // Star burst effect
+    const star = this.add.text(w / 2, py + 30, '★ DESAFIO ★', {
+      fontSize: '22px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    container.add(star);
+    this.tweens.add({ targets: star, scaleX: 1.1, scaleY: 1.1, duration: 500, yoyo: true, repeat: -1 });
+
+    // Challenge description
+    const desc = this.add.text(w / 2, py + 70, 'Ate onde voce consegue chegar?', {
+      fontSize: '14px', fontFamily: 'Arial', color: '#ccccff',
+    }).setOrigin(0.5);
+    container.add(desc);
+
+    // Target display
+    const targetText = this.add.text(w / 2, py + 110, `${target}x`, {
+      fontSize: '48px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    container.add(targetText);
+    this.tweens.add({ targets: targetText, scaleX: 1.05, scaleY: 1.05, duration: 800, yoyo: true, repeat: -1 });
+
+    // Current vs target
+    const currentInfo = this.add.text(w / 2, py + 150, `Atual: ${this.currentMultiplier.toFixed(2)}x → Meta: ${target}x`, {
+      fontSize: '12px', fontFamily: 'Arial', color: '#aaaaaa',
+    }).setOrigin(0.5);
+    container.add(currentInfo);
+
+    // Buttons
+    const btnW = (panelW - 30) / 2;
+    const btnY = py + panelH - 60;
+
+    // DECLINE button
+    const declineBg = this.add.graphics();
+    declineBg.fillStyle(0x666666);
+    declineBg.fillRoundedRect(0, 0, btnW, 44, 8);
+    const declineText = this.add.text(btnW / 2, 22, 'NAO', {
+      fontSize: '16px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const declineHit = this.add.rectangle(btnW / 2, 22, btnW, 44).setInteractive({ useHandCursor: true });
+    declineHit.on('pointerdown', () => this.dismissChallenge());
+    const declineBtn = this.add.container(px + 5, btnY, [declineBg, declineText, declineHit]);
+    container.add(declineBtn);
+
+    // ACCEPT button
+    const acceptBg = this.add.graphics();
+    acceptBg.fillStyle(0x9933ff);
+    acceptBg.fillRoundedRect(0, 0, btnW, 44, 8);
+    const acceptText = this.add.text(btnW / 2, 22, 'ACEITAR!', {
+      fontSize: '16px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    const acceptHit = this.add.rectangle(btnW / 2, 22, btnW, 44).setInteractive({ useHandCursor: true });
+    acceptHit.on('pointerdown', () => this.acceptChallenge(target));
+    const acceptBtn = this.add.container(px + btnW + 15, btnY, [acceptBg, acceptText, acceptHit]);
+    container.add(acceptBtn);
+  }
+
+  private dismissChallenge(): void {
+    this.frozen = false;
+    this.challengeUI?.destroy();
+    this.challengeUI = undefined;
+  }
+
+  private acceptChallenge(target: number): void {
+    this.frozen = false;
+    this.challengeUI?.destroy();
+    this.challengeUI = undefined;
+
+    this.challengeActive = true;
+    this.challengeTarget = target;
+    this.setCashoutEnabled(false); // Lock cashout!
+
+    // Show persistent goal tracker
+    const w = GAME_CONFIG.WIDTH;
+    this.challengeGoalText = this.add.text(w / 2, 95, `META: ${target}x (0%)`, {
+      fontSize: '13px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
+      backgroundColor: '#1a0a3ecc', padding: { x: 10, y: 4 },
+    }).setOrigin(0.5).setDepth(100);
+
+    this.statusText.setText(`Desafio aceito! Chegue em ${target}x!`);
+  }
+
   private land(): void {
     this.isOnGround = true;
     this.velocityY = 0;
@@ -1007,7 +1190,7 @@ export class CoinRunnerScene extends Phaser.Scene {
 
       seg.grounds.forEach(g => { if (g.active) g.x -= speed; });
       seg.platforms.forEach(p => { if (p.sprite.active) p.sprite.x -= speed; });
-      seg.coins.forEach(c => { if (c.active) c.x -= speed; });
+      seg.coins.forEach(c => { if (c.sprite.active) c.sprite.x -= speed; });
       seg.enemies.forEach(e => { if (e.sprite.active) e.sprite.x -= speed; });
       seg.pipes.forEach(p => {
         if (p.sprite.active) p.sprite.x -= speed;
@@ -1026,7 +1209,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       if (rightmost < -100) {
         seg.grounds.forEach(g => g.destroy());
         seg.platforms.forEach(p => p.sprite.destroy());
-        seg.coins.forEach(c => c.destroy());
+        seg.coins.forEach(c => c.sprite.destroy());
         seg.enemies.forEach(e => e.sprite.destroy());
         seg.pipes.forEach(p => { p.sprite.destroy(); p.piranha?.destroy(); });
         seg.qblocks.forEach(q => q.sprite.destroy());

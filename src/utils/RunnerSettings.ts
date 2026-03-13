@@ -13,9 +13,13 @@ export const RunnerSettings = {
   speedThreshold: 10, // multiplier value where speed starts increasing
   speedScaling: 0.15, // how fast speed increases after threshold
 
-  // Multiplier
-  multiplierPerDistance: 0.001, // was 0.004 - much slower now
-  multiplierPerCoin: 0.05, // was 0.08
+  // Multiplier (coin-based only)
+  multiplierPerCoin: 0.10, // each normal coin adds +0.10x
+  premiumCoinValue: 1.0, // premium coin adds +1.0x
+  premiumCoinChance: 0.08, // 8% chance a coin spawns as premium
+
+  // Magic blocks
+  magicBlockChance: 0.05, // 5% chance a qblock is magic (challenge block)
 
   // Difficulty
   enemyDensity: 0.8, // 0-1 scale, higher = more enemies
@@ -36,8 +40,10 @@ export const RunnerSettings = {
     RunnerSettings.maxSpeed = 4.5;
     RunnerSettings.speedThreshold = 10;
     RunnerSettings.speedScaling = 0.15;
-    RunnerSettings.multiplierPerDistance = 0.001;
-    RunnerSettings.multiplierPerCoin = 0.05;
+    RunnerSettings.multiplierPerCoin = 0.10;
+    RunnerSettings.premiumCoinValue = 1.0;
+    RunnerSettings.premiumCoinChance = 0.08;
+    RunnerSettings.magicBlockChance = 0.05;
     RunnerSettings.enemyDensity = 0.8;
     RunnerSettings.gapSizeMin = 40;
     RunnerSettings.gapSizeMax = 60;

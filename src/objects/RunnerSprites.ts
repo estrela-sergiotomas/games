@@ -9,9 +9,11 @@ export class RunnerSprites {
     this.generateRunner(scene);
     this.generatePlatform(scene);
     this.generateCoin(scene);
+    this.generatePremiumCoin(scene);
     this.generateCloud(scene);
     this.generateFlag(scene);
     this.generateBlock(scene);
+    this.generateMagicBlock(scene);
     this.generatePipe(scene);
     this.generatePipeLarge(scene);
     this.generateMushroom(scene);
@@ -138,6 +140,32 @@ export class RunnerSprites {
     g.fillStyle(0xb8860b);
     g.fillRect(7, 4, 2, 8); g.fillRect(5, 5, 6, 2); g.fillRect(5, 9, 6, 2);
     g.generateTexture('coin', 16, 16); g.destroy();
+  }
+
+  private static generatePremiumCoin(scene: Phaser.Scene): void {
+    const g = scene.make.graphics({ x: 0, y: 0 });
+    // Larger, diamond-shaped premium coin with sparkle
+    g.fillStyle(0xff00ff); g.fillCircle(10, 10, 9);
+    g.fillStyle(0xff66ff); g.fillCircle(7, 7, 4);
+    g.fillStyle(0xffffff); g.fillCircle(6, 5, 2);
+    g.fillStyle(0xcc00cc);
+    g.fillRect(8, 3, 4, 14); g.fillRect(3, 8, 14, 4);
+    g.fillStyle(0xff88ff); g.fillRect(9, 5, 2, 2);
+    g.generateTexture('coin_premium', 20, 20); g.destroy();
+  }
+
+  private static generateMagicBlock(scene: Phaser.Scene): void {
+    const g = scene.make.graphics({ x: 0, y: 0 });
+    // Rainbow/magic block - glowing purple with star
+    g.fillStyle(0x9933ff); g.fillRect(0, 0, 22, 22);
+    g.lineStyle(2, 0x6600cc); g.strokeRect(0, 0, 22, 22);
+    g.fillStyle(0xcc66ff); g.fillRect(2, 2, 18, 2); g.fillRect(2, 2, 2, 18);
+    // Star symbol
+    g.fillStyle(0xffd700);
+    g.fillRect(9, 4, 4, 4); g.fillRect(7, 6, 8, 4); g.fillRect(5, 8, 12, 2);
+    g.fillRect(7, 10, 3, 4); g.fillRect(12, 10, 3, 4);
+    g.fillStyle(0xffff00); g.fillRect(10, 5, 2, 2);
+    g.generateTexture('magic_block', 22, 22); g.destroy();
   }
 
   private static generateCloud(scene: Phaser.Scene): void {
