@@ -6,7 +6,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="theme-color" content="#0f0f23">
-    <title>Aviatore</title>
+    <title>Sergio Prototypes</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body {
@@ -45,7 +45,7 @@
             50% { transform: translateY(-15px); }
         }
         .splash-title {
-            font-size: 2.5rem;
+            font-size: 2rem;
             font-weight: bold;
             background: linear-gradient(135deg, #4ecdc4, #ffd700, #ff4757);
             background-size: 200% 200%;
@@ -94,33 +94,29 @@
             max-height: 100vh;
         }
     </style>
-  <script type="module" crossorigin src="/games/assets/index-Cf3m_Hj1.js"></script>
+  <script type="module" crossorigin src="/games/assets/index-Cy3jLPae.js"></script>
 </head>
 <body>
     <!-- Splash Screen -->
     <div id="splash">
         <svg class="splash-plane" viewBox="0 0 120 60" xmlns="http://www.w3.org/2000/svg">
-            <ellipse cx="8" cy="30" rx="10" ry="6" fill="#ff6600" opacity="0.7">
-                <animate attributeName="rx" values="8;12;8" dur="0.2s" repeatCount="indefinite"/>
-            </ellipse>
-            <ellipse cx="10" cy="30" rx="6" ry="4" fill="#ffcc00" opacity="0.9">
-                <animate attributeName="rx" values="5;7;5" dur="0.15s" repeatCount="indefinite"/>
-            </ellipse>
-            <path d="M30 20 Q15 30 30 40 L90 40 Q105 30 90 20 Z" fill="#cc2233"/>
-            <ellipse cx="75" cy="24" rx="10" ry="6" fill="#dd3344"/>
-            <ellipse cx="77" cy="23" rx="6" ry="4" fill="#1a1a3e"/>
-            <ellipse cx="76" cy="22" rx="3" ry="2" fill="#4ecdc4" opacity="0.4"/>
-            <rect x="40" y="12" width="35" height="5" rx="2" fill="#bb1122"/>
-            <rect x="40" y="43" width="35" height="5" rx="2" fill="#bb1122"/>
-            <polygon points="25,20 35,10 40,20" fill="#cc2233"/>
-            <rect x="22" y="17" width="14" height="4" rx="2" fill="#bb1122"/>
-            <rect x="22" y="39" width="14" height="4" rx="2" fill="#bb1122"/>
-            <rect x="92" y="23" width="8" height="14" rx="3" fill="#666"/>
-            <ellipse cx="102" cy="30" rx="3" ry="14" fill="#ccc" opacity="0.4">
-                <animate attributeName="ry" values="12;16;12" dur="0.1s" repeatCount="indefinite"/>
+            <!-- Joystick/gamepad icon -->
+            <rect x="25" y="20" width="70" height="30" rx="12" fill="#4ecdc4"/>
+            <rect x="30" y="25" width="60" height="20" rx="8" fill="#3dbdb4"/>
+            <!-- D-pad -->
+            <rect x="38" y="30" width="12" height="4" rx="1" fill="#1a1a3e"/>
+            <rect x="42" y="26" width="4" height="12" rx="1" fill="#1a1a3e"/>
+            <!-- Buttons -->
+            <circle cx="75" cy="30" r="3" fill="#ff4757"/>
+            <circle cx="83" cy="30" r="3" fill="#ffd700"/>
+            <circle cx="79" cy="25" r="3" fill="#00aa00"/>
+            <circle cx="79" cy="35" r="3" fill="#2038ec"/>
+            <!-- Glow -->
+            <ellipse cx="60" cy="55" rx="30" ry="4" fill="#4ecdc4" opacity="0.15">
+                <animate attributeName="rx" values="28;34;28" dur="1.5s" repeatCount="indefinite"/>
             </ellipse>
         </svg>
-        <div class="splash-title">AVIATORE</div>
+        <div class="splash-title">SERGIO PROTOTYPES</div>
         <div class="splash-loader">
             <div class="splash-loader-bar" id="loader-bar"></div>
         </div>
