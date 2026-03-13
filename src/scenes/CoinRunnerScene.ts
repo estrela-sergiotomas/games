@@ -85,6 +85,7 @@ export class CoinRunnerScene extends Phaser.Scene {
   private coinsText!: Phaser.GameObjects.Text;
   private cashoutBtn!: Phaser.GameObjects.Container;
   private playBtn!: Phaser.GameObjects.Container;
+  private betPanel!: Phaser.GameObjects.Container;
 
   // Run animation
   private runFrame = 0;
@@ -427,52 +428,111 @@ export class CoinRunnerScene extends Phaser.Scene {
     }).setOrigin(1, 0).setDepth(100).setAlpha(0);
 
     // Status
-    this.statusText = this.add.text(w / 2, this.groundY + 40, 'Faca sua aposta e corra!', {
+    this.statusText = this.add.text(w / 2, this.groundY + 40, '', {
       fontSize: '14px', fontFamily: 'Arial', color: '#ffffff',
     }).setOrigin(0.5, 0).setDepth(100);
 
-    // Bet controls
-    const controlY = h - 175;
-    this.createBetControls(w, controlY);
-    this.createActionButtons(w, controlY + 80);
+    // Bet panel (overlay popup for betting phase)
+    this.createBetPanel(w, h);
+
+    // Cashout button (shown only during running)
+    this.createCashoutButton(w, h);
+
     this.createBottomBar(w, h);
   }
 
-  private createBetControls(w: number, y: number): void {
-    this.add.text(w / 2, y, 'APOSTA', {
-      fontSize: '12px', fontFamily: 'Arial', color: '#ffcc99',
-    }).setOrigin(0.5).setDepth(100);
+  private createBetPanel(w: number, h: number): void {
+    this.betPanel = this.add.container(0, 0).setDepth(200);
 
-    const rowY = y + 18;
+    // Semi-transparent overlay
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.6);
+    overlay.fillRect(0, 42, w, h - 82);
+    this.betPanel.add(overlay);
+
+    // Panel background
+    const panelW = w - 40;
+    const panelH = 260;
+    const panelX = 20;
+    const panelY = h / 2 - panelH / 2 - 20;
+
+    const panelBg = this.add.graphics();
+    panelBg.fillStyle(0x1a1a3e, 0.95);
+    panelBg.fillRoundedRect(panelX, panelY, panelW, panelH, 16);
+    panelBg.lineStyle(2, 0xffd700, 0.6);
+    panelBg.strokeRoundedRect(panelX, panelY, panelW, panelH, 16);
+    this.betPanel.add(panelBg);
+
+    // Title
+    const title = this.add.text(w / 2, panelY + 20, 'FACA SUA APOSTA', {
+      fontSize: '20px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+    this.betPanel.add(title);
+
+    // Balance display
+    const balLabel = this.add.text(w / 2, panelY + 50, `Saldo: ${GameState.balance.toFixed(0)} coins`, {
+      fontSize: '14px', fontFamily: 'Arial', color: '#4ecdc4',
+    }).setOrigin(0.5, 0);
+    this.betPanel.add(balLabel);
+
+    // Bet label
+    const betLabel = this.add.text(w / 2, panelY + 80, 'APOSTA', {
+      fontSize: '12px', fontFamily: 'Arial', color: '#ffcc99',
+    }).setOrigin(0.5, 0);
+    this.betPanel.add(betLabel);
+
+    // Bet controls row
+    const rowY = panelY + 100;
     const btnSize = 40;
 
-    this.makeBtn(w / 2 - 75, rowY, btnSize, btnSize, '-', 0x8b4513, () => this.changeBet(-5));
+    const minusBtn = this.makeBtn(w / 2 - 75, rowY, btnSize, btnSize, '-', 0x8b4513, () => this.changeBet(-5));
+    this.betPanel.add(minusBtn);
 
     const betBg = this.add.graphics();
     betBg.fillStyle(0x6b3e08);
     betBg.fillRoundedRect(w / 2 - 28, rowY, 56, btnSize, 8);
-    betBg.setDepth(100);
+    this.betPanel.add(betBg);
+
     this.betText = this.add.text(w / 2, rowY + btnSize / 2, this.betAmount.toString(), {
       fontSize: '20px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(100);
+    }).setOrigin(0.5);
+    this.betPanel.add(this.betText);
 
-    this.makeBtn(w / 2 + 35, rowY, btnSize, btnSize, '+', 0x8b4513, () => this.changeBet(5));
+    const plusBtn = this.makeBtn(w / 2 + 35, rowY, btnSize, btnSize, '+', 0x8b4513, () => this.changeBet(5));
+    this.betPanel.add(plusBtn);
 
-    const quickY = rowY + btnSize + 6;
+    // Quick bet buttons
+    const quickY = rowY + btnSize + 8;
     [5, 10, 25, 50, 100].forEach((amt, i) => {
-      const qw = (w - 30) / 5;
-      this.makeBtn(10 + i * qw + 2, quickY, qw - 4, 26, amt.toString(), 0x6b3e08, () => {
+      const qw = (panelW - 20) / 5;
+      const qBtn = this.makeBtn(panelX + 10 + i * qw + 2, quickY, qw - 4, 26, amt.toString(), 0x6b3e08, () => {
         this.betAmount = amt;
         this.betText.setText(amt.toString());
       }, '12px');
+      this.betPanel.add(qBtn);
     });
+
+    // START button
+    const startY = quickY + 40;
+    this.playBtn = this.makeBtn(panelX + 20, startY, panelW - 40, 52, 'START', 0x00aa00, () => this.startRun(), '22px');
+    this.betPanel.add(this.playBtn);
   }
 
-  private createActionButtons(w: number, y: number): void {
-    const halfW = (w - 30) / 2;
-    this.playBtn = this.makeBtn(10, y, halfW, 52, 'CORRER!', 0x00aa00, () => this.startRun(), '18px');
-    this.cashoutBtn = this.makeBtn(10 + halfW + 10, y, halfW, 52, 'CASH OUT', 0xffd700, () => this.cashOut(), '18px');
+  private createCashoutButton(w: number, h: number): void {
+    const btnY = h - 95;
+    this.cashoutBtn = this.makeBtn(20, btnY, w - 40, 52, 'CASH OUT', 0xffd700, () => this.cashOut(), '22px');
     this.setCashoutEnabled(false);
+    this.cashoutBtn.setVisible(false);
+  }
+
+  private showBetPanel(): void {
+    this.betPanel.setVisible(true);
+    this.cashoutBtn.setVisible(false);
+    this.setCashoutEnabled(false);
+  }
+
+  private hideBetPanel(): void {
+    this.betPanel.setVisible(false);
   }
 
   private createBottomBar(w: number, h: number): void {
@@ -545,7 +605,8 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.balanceText.setText(`${GameState.balance.toFixed(0)} coins`);
     this.multiplierText.setAlpha(0.85);
     this.coinsText.setAlpha(1);
-    this.setPlayEnabled(false);
+    this.hideBetPanel();
+    this.cashoutBtn.setVisible(true);
     this.setCashoutEnabled(true);
     SoundFX.playFlyAway();
 
@@ -658,6 +719,7 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   private showCashoutPrize(): void {
     const w = GAME_CONFIG.WIDTH;
+    const h = GAME_CONFIG.HEIGHT;
     const winnings = this.betAmount * this.currentMultiplier;
     GameState.addWinnings(winnings);
 
@@ -669,25 +731,32 @@ export class CoinRunnerScene extends Phaser.Scene {
     });
 
     this.balanceText.setText(`${GameState.balance.toFixed(0)} coins`);
+    this.cashoutBtn.setVisible(false);
 
     // Prize display
-    const overlay = this.add.graphics().setDepth(300);
+    const resultContainer = this.add.container(0, 0).setDepth(300);
+
+    const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.6);
-    overlay.fillRect(0, 0, w, GAME_CONFIG.HEIGHT);
+    overlay.fillRect(0, 0, w, h);
+    resultContainer.add(overlay);
 
     const prizeY = this.groundY / 2;
 
     const winText = this.add.text(w / 2, prizeY - 40, 'VOCE GANHOU!', {
       fontSize: '28px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(300);
+    }).setOrigin(0.5);
+    resultContainer.add(winText);
 
     const amtText = this.add.text(w / 2, prizeY + 10, `+${winnings.toFixed(2)} coins`, {
       fontSize: '36px', fontFamily: 'Arial', color: '#00ff00', fontStyle: 'bold',
-    }).setOrigin(0.5).setDepth(300).setScale(0);
+    }).setOrigin(0.5).setScale(0);
+    resultContainer.add(amtText);
 
     const multText = this.add.text(w / 2, prizeY + 60, `${this.currentMultiplier.toFixed(2)}x  |  ${this.coinsCollected} moedas`, {
       fontSize: '16px', fontFamily: 'Arial', color: '#ffffff',
-    }).setOrigin(0.5).setDepth(300);
+    }).setOrigin(0.5);
+    resultContainer.add(multText);
 
     // Animate prize
     this.tweens.add({
@@ -700,7 +769,8 @@ export class CoinRunnerScene extends Phaser.Scene {
     // Coin burst particles
     for (let i = 0; i < 15; i++) {
       const coin = this.add.image(w / 2, prizeY, 'coin')
-        .setScale(1.5).setDepth(300);
+        .setScale(1.5);
+      resultContainer.add(coin);
       this.tweens.add({
         targets: coin,
         x: w / 2 + Phaser.Math.Between(-120, 120),
@@ -709,7 +779,6 @@ export class CoinRunnerScene extends Phaser.Scene {
         scale: 0,
         duration: Phaser.Math.Between(600, 1200),
         delay: i * 50,
-        onComplete: () => coin.destroy(),
       });
     }
 
@@ -717,9 +786,13 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.multiplierText.setColor('#00ff00');
     this.phase = 'result';
 
-    this.time.delayedCall(4000, () => {
-      winText.destroy(); amtText.destroy(); multText.destroy(); overlay.destroy();
-      this.scene.restart();
+    // "APOSTAR NOVAMENTE" button after a short delay
+    this.time.delayedCall(2000, () => {
+      const replayBtn = this.makeBtn(w / 2 - 100, prizeY + 100, 200, 50, 'JOGAR NOVAMENTE', 0x00aa00, () => {
+        resultContainer.destroy();
+        this.scene.restart();
+      }, '16px');
+      resultContainer.add(replayBtn);
     });
   }
 
@@ -731,6 +804,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     SoundFX.playExplosion();
     this.multiplierText.setColor('#ff4757');
     this.statusText.setText('Voce morreu! Aposta perdida!');
+    this.cashoutBtn.setVisible(false);
     this.setCashoutEnabled(false);
 
     // Clear tutorial
@@ -750,6 +824,7 @@ export class CoinRunnerScene extends Phaser.Scene {
           y: GAME_CONFIG.HEIGHT + 50,
           duration: 700,
           ease: 'Power1',
+          onComplete: () => this.showDeathResult(),
         });
       },
     });
@@ -762,7 +837,44 @@ export class CoinRunnerScene extends Phaser.Scene {
     });
 
     this.phase = 'result';
-    this.time.delayedCall(3000, () => this.scene.restart());
+  }
+
+  private showDeathResult(): void {
+    const w = GAME_CONFIG.WIDTH;
+    const h = GAME_CONFIG.HEIGHT;
+
+    const resultContainer = this.add.container(0, 0).setDepth(300);
+
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.6);
+    overlay.fillRect(0, 0, w, h);
+    resultContainer.add(overlay);
+
+    const prizeY = this.groundY / 2;
+
+    const loseText = this.add.text(w / 2, prizeY - 30, 'VOCE PERDEU!', {
+      fontSize: '28px', fontFamily: 'Arial', color: '#ff4757', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    resultContainer.add(loseText);
+
+    const amtText = this.add.text(w / 2, prizeY + 20, `-${this.betAmount} coins`, {
+      fontSize: '30px', fontFamily: 'Arial', color: '#ff6b6b', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    resultContainer.add(amtText);
+
+    const infoText = this.add.text(w / 2, prizeY + 65, `Multiplicador: ${this.currentMultiplier.toFixed(2)}x  |  ${this.coinsCollected} moedas`, {
+      fontSize: '14px', fontFamily: 'Arial', color: '#aaaaaa',
+    }).setOrigin(0.5);
+    resultContainer.add(infoText);
+
+    // Replay button
+    this.time.delayedCall(1500, () => {
+      const replayBtn = this.makeBtn(w / 2 - 100, prizeY + 100, 200, 50, 'JOGAR NOVAMENTE', 0x00aa00, () => {
+        resultContainer.destroy();
+        this.scene.restart();
+      }, '16px');
+      resultContainer.add(replayBtn);
+    });
   }
 
   // === UPDATE LOOP ===
@@ -794,9 +906,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.scrollOffset += speed;
     this.distanceTraveled += speed;
 
-    // Multiplier: coin-based gains + tiny distance bonus so it never feels "stuck"
-    // Distance adds a very slow passive gain (0.0002 per unit = ~0.01x per second)
-    this.currentMultiplier += this.worldSpeed * dt * 0.0002;
+    // Multiplier: coin-based only - grows when collecting coins
     this.currentMultiplier = Math.floor(this.currentMultiplier * 100) / 100;
 
     let mColor = '#ffd700';
@@ -915,16 +1025,19 @@ export class CoinRunnerScene extends Phaser.Scene {
         if (this.overlap(this.runner, cd.sprite, 22, 28)) {
           this.coinsCollected++;
           if (cd.premium) {
-            // Premium coin: +1x
+            // Premium coin
             this.currentMultiplier += RunnerSettings.premiumCoinValue;
-            // Big visual feedback
-            const label = this.add.text(cd.sprite.x, cd.sprite.y - 20, `+${RunnerSettings.premiumCoinValue.toFixed(1)}x`, {
+            const label = this.add.text(cd.sprite.x, cd.sprite.y - 20, `+${RunnerSettings.premiumCoinValue.toFixed(2)}x`, {
               fontSize: '18px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
             }).setOrigin(0.5).setDepth(200);
             this.tweens.add({ targets: label, y: label.y - 50, alpha: 0, duration: 800, onComplete: () => label.destroy() });
           } else {
-            // Normal coin: +0.10x
+            // Normal coin
             this.currentMultiplier += RunnerSettings.multiplierPerCoin;
+            const label = this.add.text(cd.sprite.x, cd.sprite.y - 15, `+${RunnerSettings.multiplierPerCoin.toFixed(2)}x`, {
+              fontSize: '12px', fontFamily: 'Arial', color: '#ffd700',
+            }).setOrigin(0.5).setDepth(200);
+            this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
           }
           this.tweens.add({ targets: cd.sprite, y: cd.sprite.y - 30, alpha: 0, scaleX: 0, duration: 300, onComplete: () => cd.sprite.destroy() });
           seg.coins.splice(i, 1);
@@ -1273,12 +1386,6 @@ export class CoinRunnerScene extends Phaser.Scene {
   private changeBet(d: number): void {
     this.betAmount = Math.max(GAME_CONFIG.MIN_BET, this.betAmount + d);
     this.betText.setText(this.betAmount.toString());
-  }
-
-  private setPlayEnabled(e: boolean): void {
-    this.playBtn.setAlpha(e ? 1 : 0.4);
-    const h = this.playBtn.getAt(2) as Phaser.GameObjects.Rectangle;
-    if (e) h.setInteractive({ useHandCursor: true }); else h.disableInteractive();
   }
 
   private setCashoutEnabled(e: boolean): void {

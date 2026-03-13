@@ -14,8 +14,8 @@ export const RunnerSettings = {
   speedScaling: 0.15, // how fast speed increases after threshold
 
   // Multiplier (coin-based only)
-  multiplierPerCoin: 0.10, // each normal coin adds +0.10x
-  premiumCoinValue: 1.0, // premium coin adds +1.0x
+  multiplierPerCoin: 0.01, // each normal coin adds +0.01x
+  premiumCoinValue: 0.10, // premium coin adds +0.10x
   premiumCoinChance: 0.08, // 8% chance a coin spawns as premium
 
   // Magic blocks
@@ -43,8 +43,8 @@ export const RunnerSettings = {
     RunnerSettings.maxSpeed = 4.5;
     RunnerSettings.speedThreshold = 10;
     RunnerSettings.speedScaling = 0.15;
-    RunnerSettings.multiplierPerCoin = 0.10;
-    RunnerSettings.premiumCoinValue = 1.0;
+    RunnerSettings.multiplierPerCoin = 0.01;
+    RunnerSettings.premiumCoinValue = 0.10;
     RunnerSettings.premiumCoinChance = 0.08;
     RunnerSettings.magicBlockChance = 0.05;
     RunnerSettings.poisonMushroomChance = 0.08;

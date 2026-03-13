@@ -129,7 +129,7 @@ export class MenuScene extends Phaser.Scene {
       0x3e2a08,
       () => {
         if (!this.musicOn) { synthMusic.start(); this.musicOn = true; }
-        this.scene.start('CoinRunnerScene');
+        this.showCoinRunnerInstructions(w, h);
       },
       'runner',
     );
@@ -244,5 +244,125 @@ export class MenuScene extends Phaser.Scene {
       cardBg.strokeRoundedRect(cx - w / 2, y, w, h, 12);
     });
     hitArea.on('pointerdown', onClick);
+  }
+
+  private showCoinRunnerInstructions(w: number, h: number): void {
+    const cx = w / 2;
+    const container = this.add.container(0, 0).setDepth(500);
+
+    // Overlay
+    const overlay = this.add.graphics();
+    overlay.fillStyle(0x000000, 0.75);
+    overlay.fillRect(0, 0, w, h);
+    container.add(overlay);
+
+    // Panel
+    const panelW = w - 30;
+    const panelH = 480;
+    const panelX = 15;
+    const panelY = (h - panelH) / 2;
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x1a1a3e, 0.97);
+    bg.fillRoundedRect(panelX, panelY, panelW, panelH, 16);
+    bg.lineStyle(2, 0xffd700, 0.7);
+    bg.strokeRoundedRect(panelX, panelY, panelW, panelH, 16);
+    container.add(bg);
+
+    // Title
+    container.add(this.add.text(cx, panelY + 22, 'COIN RUNNER', {
+      fontSize: '24px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+
+    container.add(this.add.text(cx, panelY + 52, 'Como Jogar', {
+      fontSize: '16px', fontFamily: 'Arial', color: '#4ecdc4',
+    }).setOrigin(0.5, 0));
+
+    // Divider
+    const div = this.add.graphics();
+    div.lineStyle(1, 0xffd700, 0.3);
+    div.lineBetween(panelX + 20, panelY + 78, panelX + panelW - 20, panelY + 78);
+    container.add(div);
+
+    // Instructions text
+    const instructions = [
+      { icon: '1.', text: 'Escolha o valor da sua aposta e\n   pressione START para comecar.' },
+      { icon: '2.', text: 'Toque na tela ou pressione ESPACO\n   para PULAR sobre obstaculos.' },
+      { icon: '3.', text: 'Colete moedas para aumentar\n   seu multiplicador (+0.01x cada).' },
+      { icon: '4.', text: 'Moedas roxas premium valem\n   +0.10x cada!' },
+      { icon: '5.', text: 'Pressione CASH OUT a qualquer\n   momento para garantir seus ganhos.' },
+      { icon: '6.', text: 'Se voce morrer, perde a aposta!' },
+    ];
+
+    let yPos = panelY + 90;
+    for (const inst of instructions) {
+      container.add(this.add.text(panelX + 25, yPos, inst.icon, {
+        fontSize: '14px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
+      }));
+      container.add(this.add.text(panelX + 45, yPos, inst.text, {
+        fontSize: '13px', fontFamily: 'Arial', color: '#e0e0e0',
+        lineSpacing: 4,
+      }));
+      yPos += 42;
+    }
+
+    // Rules section
+    yPos += 5;
+    const div2 = this.add.graphics();
+    div2.lineStyle(1, 0xffd700, 0.3);
+    div2.lineBetween(panelX + 20, yPos, panelX + panelW - 20, yPos);
+    container.add(div2);
+    yPos += 12;
+
+    container.add(this.add.text(cx, yPos, 'Regras & RTP', {
+      fontSize: '15px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
+    }).setOrigin(0.5, 0));
+    yPos += 24;
+
+    container.add(this.add.text(panelX + 25, yPos,
+      'Ganhos = Aposta x Multiplicador\n' +
+      'Cogumelo venenoso: perde 50% do mult.\n' +
+      'Quanto mais longe, mais dificil fica!\n\n' +
+      'RTP: ~96% (varia com habilidade)',
+      {
+        fontSize: '12px', fontFamily: 'Arial', color: '#aaaaaa',
+        lineSpacing: 5,
+      }
+    ));
+
+    // Play button
+    const btnW = 200;
+    const btnH = 48;
+    const btnX = cx - btnW / 2;
+    const btnY = panelY + panelH - 62;
+
+    const btnGfx = this.add.graphics();
+    btnGfx.fillStyle(0x00aa00);
+    btnGfx.fillRoundedRect(btnX, btnY, btnW, btnH, 10);
+    container.add(btnGfx);
+
+    const btnText = this.add.text(cx, btnY + btnH / 2, 'JOGAR!', {
+      fontSize: '20px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+    container.add(btnText);
+
+    const btnHit = this.add.rectangle(cx, btnY + btnH / 2, btnW, btnH)
+      .setInteractive({ useHandCursor: true });
+    container.add(btnHit);
+
+    btnHit.on('pointerover', () => {
+      btnGfx.clear();
+      btnGfx.fillStyle(0x00cc00);
+      btnGfx.fillRoundedRect(btnX, btnY, btnW, btnH, 10);
+    });
+    btnHit.on('pointerout', () => {
+      btnGfx.clear();
+      btnGfx.fillStyle(0x00aa00);
+      btnGfx.fillRoundedRect(btnX, btnY, btnW, btnH, 10);
+    });
+    btnHit.on('pointerdown', () => {
+      container.destroy();
+      this.scene.start('CoinRunnerScene');
+    });
   }
 }
