@@ -287,7 +287,7 @@ export class MenuScene extends Phaser.Scene {
     // Instructions text
     const instructions = [
       { icon: '1.', text: 'Escolha o valor da sua aposta e\n   pressione START para comecar.' },
-      { icon: '2.', text: 'Toque na tela ou pressione ESPACO\n   para PULAR sobre obstaculos.' },
+      { icon: '2.', text: 'SEGURE o toque ou ESPACO para\n   pular. Quanto mais tempo, mais alto!' },
       { icon: '3.', text: 'Colete moedas para aumentar\n   seu multiplicador (+0.01x cada).' },
       { icon: '4.', text: 'Moedas roxas premium valem\n   +0.10x cada!' },
       { icon: '5.', text: 'Pressione CASH OUT a qualquer\n   momento para garantir seus ganhos.' },

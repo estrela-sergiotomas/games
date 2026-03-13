@@ -87,6 +87,16 @@ export class CoinRunnerScene extends Phaser.Scene {
   private playBtn!: Phaser.GameObjects.Container;
   private betPanel!: Phaser.GameObjects.Container;
 
+  // Variable jump
+  private jumpHeld = false;
+  private jumpHoldTime = 0;
+  private readonly MAX_JUMP_HOLD = 280; // ms max hold for highest jump
+  private readonly MIN_JUMP_FORCE_RATIO = 0.45; // min jump = 45% of full
+
+  // Challenge bonus
+  private challengesCompleted = 0;
+  private coinMultiplierBonus = 1; // multiplied to coin values after challenge
+
   // Run animation
   private runFrame = 0;
   private runTimer = 0;
@@ -141,6 +151,10 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.challengeUI = undefined;
     this.challengeGoalText = undefined;
     this.frozen = false;
+    this.jumpHeld = false;
+    this.jumpHoldTime = 0;
+    this.challengesCompleted = 0;
+    this.coinMultiplierBonus = 1;
 
     this.createBackground(w, h);
     this.createInitialGround(w);
@@ -352,10 +366,15 @@ export class CoinRunnerScene extends Phaser.Scene {
     }
 
     // Question blocks (some may be magic challenge blocks)
+    // Challenge blocks appear more often as player progresses (exponential scaling)
     if (Math.random() < 0.3) {
       const qx = segStartX + Phaser.Math.Between(30, segLen - 30);
       const qy = this.groundY - Phaser.Math.Between(55, 75);
-      const isMagic = Math.random() < RunnerSettings.magicBlockChance;
+      // Base 5% + exponential increase: doubles every 8 segments, capped at 60%
+      const challengeChance = Math.min(0.6,
+        RunnerSettings.magicBlockChance + (this.challengesCompleted * 0.05) + Math.pow(1.09, this.segmentCount) * 0.005
+      );
+      const isMagic = Math.random() < challengeChance;
       const tex = isMagic ? 'magic_block' : 'qblock';
       const qblock = this.add.image(qx, qy, tex).setScale(1.4);
       if (isMagic) {
@@ -576,26 +595,66 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   // === INPUT ===
   private setupInput(): void {
+    // Touch: hold = jump higher
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.y < this.groundY + 30) {
-        if (this.phase === 'running' || this.phase === 'tutorial') this.jump();
+        if (this.phase === 'running' || this.phase === 'tutorial') this.startJump();
       }
     });
+    this.input.on('pointerup', () => {
+      this.releaseJump();
+    });
+
+    // Keyboard: SPACE hold for variable jump
     this.input.keyboard?.on('keydown-SPACE', () => {
-      if (this.phase === 'running' || this.phase === 'tutorial') this.jump();
+      if (this.phase === 'running' || this.phase === 'tutorial') this.startJump();
       else if (this.phase === 'betting') this.startRun();
     });
+    this.input.keyboard?.on('keyup-SPACE', () => {
+      this.releaseJump();
+    });
+
+    // UP arrow
     this.input.keyboard?.on('keydown-UP', () => {
-      if (this.phase === 'running' || this.phase === 'tutorial') this.jump();
+      if (this.phase === 'running' || this.phase === 'tutorial') this.startJump();
+    });
+    this.input.keyboard?.on('keyup-UP', () => {
+      this.releaseJump();
     });
   }
 
-  private jump(): void {
+  private startJump(): void {
     if (!this.isOnGround || this.isDead) return;
     this.isOnGround = false;
-    this.velocityY = this.JUMP_FORCE;
+    // Start with minimum jump force
+    this.velocityY = this.JUMP_FORCE * this.MIN_JUMP_FORCE_RATIO;
+    this.jumpHeld = true;
+    this.jumpHoldTime = 0;
     this.runner.setTexture('runner_jump');
     SoundFX.playBetTick();
+  }
+
+  private releaseJump(): void {
+    this.jumpHeld = false;
+  }
+
+  private updateJumpHold(delta: number): void {
+    if (!this.jumpHeld || this.isOnGround || this.isDead) {
+      this.jumpHeld = false;
+      return;
+    }
+    this.jumpHoldTime += delta;
+    if (this.jumpHoldTime >= this.MAX_JUMP_HOLD) {
+      // Reached max hold time
+      this.jumpHeld = false;
+      return;
+    }
+    // Apply additional upward force while holding (decreasing over time)
+    const holdRatio = 1 - (this.jumpHoldTime / this.MAX_JUMP_HOLD);
+    const extraForce = this.JUMP_FORCE * (1 - this.MIN_JUMP_FORCE_RATIO) * holdRatio * (delta / this.MAX_JUMP_HOLD) * 3;
+    this.velocityY += extraForce;
+    // Clamp to max jump force
+    this.velocityY = Math.max(this.JUMP_FORCE, this.velocityY);
   }
 
   // === GAME FLOW ===
@@ -624,7 +683,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     const w = GAME_CONFIG.WIDTH;
 
     // Tutorial message 1
-    const t1 = this.add.text(w / 2, this.groundY - 100, 'TOQUE ou ESPACO\npara PULAR!', {
+    const t1 = this.add.text(w / 2, this.groundY - 110, 'SEGURE para pular\nmais ALTO!', {
       fontSize: '20px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
       align: 'center', backgroundColor: '#000000aa',
       padding: { x: 15, y: 10 },
@@ -924,18 +983,27 @@ export class CoinRunnerScene extends Phaser.Scene {
     // Check challenge target reached
     if (this.challengeActive && this.currentMultiplier >= this.challengeTarget) {
       this.challengeActive = false;
+      this.challengesCompleted++;
+      // Coins now give 0.01x * challengeTarget (e.g. target 5x → coins give 0.05x each)
+      this.coinMultiplierBonus = this.challengeTarget;
       this.setCashoutEnabled(true);
       if (this.challengeGoalText) {
         this.challengeGoalText.setText('META ATINGIDA!').setColor('#00ff00');
         this.tweens.add({ targets: this.challengeGoalText, alpha: 0, duration: 3000, onComplete: () => this.challengeGoalText?.destroy() });
       }
-      // Flash celebration
+      // Flash celebration with bonus info
       const w = GAME_CONFIG.WIDTH;
       const celebrate = this.add.text(w / 2, this.groundY - 100, 'META ATINGIDA!', {
         fontSize: '24px', fontFamily: 'Arial', color: '#00ff00', fontStyle: 'bold',
         backgroundColor: '#000000cc', padding: { x: 15, y: 8 },
       }).setOrigin(0.5).setDepth(200);
       this.tweens.add({ targets: celebrate, alpha: 0, y: celebrate.y - 50, duration: 2000, onComplete: () => celebrate.destroy() });
+      // Show bonus info
+      const bonusInfo = this.add.text(w / 2, this.groundY - 60, `Moedas agora valem ${(RunnerSettings.multiplierPerCoin * this.coinMultiplierBonus).toFixed(2)}x!`, {
+        fontSize: '16px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
+        backgroundColor: '#000000cc', padding: { x: 10, y: 6 },
+      }).setOrigin(0.5).setDepth(200);
+      this.tweens.add({ targets: bonusInfo, alpha: 0, y: bonusInfo.y - 40, duration: 3000, delay: 500, onComplete: () => bonusInfo.destroy() });
       SoundFX.playCashOut();
     }
 
@@ -946,6 +1014,9 @@ export class CoinRunnerScene extends Phaser.Scene {
     }
 
     // === PHYSICS ===
+    // Variable jump: apply extra force while holding
+    this.updateJumpHold(delta);
+
     // Gravity
     if (!this.isOnGround) {
       this.velocityY += this.GRAVITY * dt;
@@ -1029,17 +1100,19 @@ export class CoinRunnerScene extends Phaser.Scene {
         if (this.overlap(this.runner, cd.sprite, 22, 28)) {
           this.coinsCollected++;
           if (cd.premium) {
-            // Premium coin
-            this.currentMultiplier += RunnerSettings.premiumCoinValue;
-            const label = this.add.text(cd.sprite.x, cd.sprite.y - 20, `+${RunnerSettings.premiumCoinValue.toFixed(2)}x`, {
+            // Premium coin (also boosted by challenge bonus)
+            const premValue = RunnerSettings.premiumCoinValue * this.coinMultiplierBonus;
+            this.currentMultiplier += premValue;
+            const label = this.add.text(cd.sprite.x, cd.sprite.y - 20, `+${premValue.toFixed(2)}x`, {
               fontSize: '18px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
             }).setOrigin(0.5).setDepth(200);
             this.tweens.add({ targets: label, y: label.y - 50, alpha: 0, duration: 800, onComplete: () => label.destroy() });
           } else {
-            // Normal coin
-            this.currentMultiplier += RunnerSettings.multiplierPerCoin;
-            const label = this.add.text(cd.sprite.x, cd.sprite.y - 15, `+${RunnerSettings.multiplierPerCoin.toFixed(2)}x`, {
-              fontSize: '12px', fontFamily: 'Arial', color: '#ffd700',
+            // Normal coin (boosted by challenge bonus)
+            const coinValue = RunnerSettings.multiplierPerCoin * this.coinMultiplierBonus;
+            this.currentMultiplier += coinValue;
+            const label = this.add.text(cd.sprite.x, cd.sprite.y - 15, `+${coinValue.toFixed(2)}x`, {
+              fontSize: '12px', fontFamily: 'Arial', color: this.coinMultiplierBonus > 1 ? '#ff00ff' : '#ffd700',
             }).setOrigin(0.5).setDepth(200);
             this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
           }
@@ -1061,7 +1134,7 @@ export class CoinRunnerScene extends Phaser.Scene {
             this.velocityY = -7;
             this.isOnGround = false;
             this.coinsCollected += 2;
-            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 2;
+            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 2 * this.coinMultiplierBonus;
             SoundFX.playBetTick();
           } else {
             this.die();
@@ -1117,7 +1190,7 @@ export class CoinRunnerScene extends Phaser.Scene {
           } else {
             // Normal block: coins + multiplier
             this.coinsCollected += 3;
-            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 3;
+            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 3 * this.coinMultiplierBonus;
             SoundFX.playCashOut();
             const burst = this.add.image(q.sprite.x, q.sprite.y - 15, 'coin').setScale(1.5);
             this.tweens.add({ targets: burst, y: burst.y - 40, alpha: 0, duration: 500, onComplete: () => burst.destroy() });
@@ -1131,7 +1204,7 @@ export class CoinRunnerScene extends Phaser.Scene {
         if (!m.active) continue;
         if (this.overlap(this.runner, m, 20, 22)) {
           this.coinsCollected += 5;
-          this.currentMultiplier += RunnerSettings.multiplierPerCoin * 5;
+          this.currentMultiplier += RunnerSettings.multiplierPerCoin * 5 * this.coinMultiplierBonus;
           this.tweens.add({ targets: m, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => m.destroy() });
           seg.mushrooms.splice(i, 1);
           this.tweens.add({ targets: this.runner, alpha: 0.5, duration: 100, yoyo: true, repeat: 5 });
@@ -1257,9 +1330,11 @@ export class CoinRunnerScene extends Phaser.Scene {
     container.add(star);
     this.tweens.add({ targets: star, scaleX: 1.1, scaleY: 1.1, duration: 500, yoyo: true, repeat: -1 });
 
-    // Challenge description
-    const desc = this.add.text(w / 2, py + 70, 'Ate onde voce consegue chegar?', {
-      fontSize: '14px', fontFamily: 'Arial', color: '#ccccff',
+    // Challenge description with reward info
+    const rewardValue = (RunnerSettings.multiplierPerCoin * target).toFixed(2);
+    const desc = this.add.text(w / 2, py + 60, `Alcance a meta e suas moedas\npassam a valer ${rewardValue}x cada!`, {
+      fontSize: '13px', fontFamily: 'Arial', color: '#ccccff',
+      align: 'center',
     }).setOrigin(0.5);
     container.add(desc);
 
