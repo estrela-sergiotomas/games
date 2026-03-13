@@ -232,11 +232,15 @@ export class CoinRunnerScene extends Phaser.Scene {
     const segLen = Phaser.Math.Between(150, 400) + Phaser.Math.Between(-30, 30);
     const gapMin = RunnerSettings.gapSizeMin;
     const gapMax = RunnerSettings.gapSizeMax;
-    // Cap gap to max jumpable distance (never impossible)
-    const maxJumpable = 120;
+    // Calculate max jumpable distance from physics:
+    // airTime = 2 * |jumpForce| / gravity, horizontalDist = baseSpeed * airTime
+    // With jumpForce=-10.5, gravity=0.6, baseSpeed=2.5: airTime≈35, dist≈87
+    // Use 70% safety margin so gaps are always comfortable to clear
+    const airTime = 2 * Math.abs(this.JUMP_FORCE) / this.GRAVITY;
+    const maxJumpable = Math.floor(this.BASE_SPEED * airTime * 0.7);
     const gapBefore = this.segmentCount <= 2 ? 0 : Math.min(maxJumpable, Phaser.Math.Between(
-      gapMin + Math.floor(difficulty * 15),
-      gapMax + Math.floor(difficulty * 25)
+      gapMin,
+      gapMax + Math.floor(difficulty * 10)
     ));
 
     const segStartX = this.nextSegmentX + gapBefore;
@@ -263,9 +267,9 @@ export class CoinRunnerScene extends Phaser.Scene {
 
     // ALWAYS add a floating platform above the gap (makes gap jumpable)
     if (gapBefore > 30) {
-      const platX = segStartX - gapBefore / 2 - 32;
-      const platY = this.groundY - Phaser.Math.Between(35, 60);
-      const platW = Math.max(56, 90 - difficulty * 15);
+      const platX = segStartX - gapBefore / 2 - 28;
+      const platY = this.groundY - Phaser.Math.Between(30, 50);
+      const platW = Math.max(64, gapBefore * 0.6);
       const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16);
       seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW });
 
