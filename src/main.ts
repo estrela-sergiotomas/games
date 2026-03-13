@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { BootScene } from './scenes/BootScene';
 import { MenuScene } from './scenes/MenuScene';
 import { CrashScene } from './scenes/CrashScene';
+import { CoinRunnerScene } from './scenes/CoinRunnerScene';
 import { GAME_CONFIG } from './utils/constants';
 
 const config: Phaser.Types.Core.GameConfig = {
@@ -17,7 +18,7 @@ const config: Phaser.Types.Core.GameConfig = {
   input: {
     touch: true,
   },
-  scene: [BootScene, MenuScene, CrashScene],
+  scene: [BootScene, MenuScene, CrashScene, CoinRunnerScene],
 };
 
 const game = new Phaser.Game(config);

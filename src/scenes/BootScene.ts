@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { PlaneSprite } from '../objects/PlaneSprite';
+import { RunnerSprites } from '../objects/RunnerSprites';
 
 export class BootScene extends Phaser.Scene {
   constructor() {
@@ -9,6 +10,9 @@ export class BootScene extends Phaser.Scene {
   create(): void {
     // Generate plane texture programmatically
     PlaneSprite.generateTexture(this);
+
+    // Generate runner game textures
+    RunnerSprites.generateTextures(this);
 
     // Generate explosion particles texture
     const particleGfx = this.make.graphics({ x: 0, y: 0 });

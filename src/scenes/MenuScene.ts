@@ -73,76 +73,77 @@ export class MenuScene extends Phaser.Scene {
       sun.lineBetween(cx - 40, h * 0.55 - 20 + i * 10, cx + 40, h * 0.55 - 20 + i * 10);
     }
 
-    // Animated plane
-    const plane = this.add.image(cx + 40, h * 0.32, 'plane').setScale(2.2);
-    this.tweens.add({ targets: plane, y: h * 0.29, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.tweens.add({ targets: plane, angle: -5, duration: 3000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-
-    const flame = this.add.image(cx - 10, h * 0.32, 'flame').setScale(2.2).setAlpha(0.8);
-    this.tweens.add({ targets: flame, y: h * 0.29, duration: 2000, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-    this.tweens.add({ targets: flame, scaleX: { from: 1.8, to: 2.8 }, alpha: { from: 0.6, to: 1 }, duration: 100, yoyo: true, repeat: -1 });
-
-    // Title
-    this.add.text(cx + 2, h * 0.06 + 2, 'AVIATORE', {
-      fontSize: '48px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
+    // === TITLE: SERGIO PROTOTYPES ===
+    this.add.text(cx + 2, h * 0.05 + 2, 'SERGIO', {
+      fontSize: '44px', fontFamily: 'Arial', color: '#000000', fontStyle: 'bold',
     }).setOrigin(0.5, 0).setAlpha(0.3);
-    this.add.text(cx, h * 0.06, 'AVIATORE', {
-      fontSize: '48px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    this.add.text(cx, h * 0.05, 'SERGIO', {
+      fontSize: '44px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
-    // Subtitle
-    this.add.text(cx, h * 0.06 + 60, 'CRASH GAME', {
-      fontSize: '22px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
-    }).setOrigin(0.5, 0);
-
-    // Tagline subtitle
-    this.add.text(cx, h * 0.06 + 95, 'Estilo Aviator', {
-      fontSize: '14px', fontFamily: 'Arial', color: '#888888',
+    this.add.text(cx, h * 0.05 + 50, 'PROTOTYPES', {
+      fontSize: '24px', fontFamily: 'Arial', color: '#4ecdc4', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
 
     // Decorative line
     const decLine = this.add.graphics();
     decLine.lineStyle(1, COLORS.CYAN, 0.5);
-    decLine.lineBetween(cx - 80, h * 0.06 + 115, cx + 80, h * 0.06 + 115);
+    decLine.lineBetween(cx - 100, h * 0.05 + 82, cx + 100, h * 0.05 + 82);
 
-    // Tagline
-    this.add.text(cx, h * 0.48, 'Aposte, voe e faca cash out!', {
-      fontSize: '14px', fontFamily: 'Arial', color: '#666666',
+    this.add.text(cx, h * 0.05 + 92, 'Selecione um jogo', {
+      fontSize: '13px', fontFamily: 'Arial', color: '#888888',
+    }).setOrigin(0.5, 0);
+
+    // === GAME CARDS ===
+    const cardStartY = h * 0.22;
+    const cardW = w - 40;
+    const cardH = 120;
+    const cardGap = 15;
+
+    // --- CARD 1: AVIATORE ---
+    this.createGameCard(
+      cx, cardStartY, cardW, cardH,
+      'AVIATORE',
+      'Crash Game',
+      'Aposte, voe e faca cash out\nantes do aviao crashar!',
+      COLORS.CYAN,
+      0x1a3a5e,
+      () => {
+        if (!this.musicOn) { synthMusic.start(); this.musicOn = true; }
+        this.scene.start('CrashScene');
+      },
+      'plane',
+    );
+
+    // --- CARD 2: COIN RUNNER ---
+    this.createGameCard(
+      cx, cardStartY + cardH + cardGap, cardW, cardH,
+      'COIN RUNNER',
+      'Platformer Bet',
+      'Corra, pule e colete moedas!\nCash out antes de morrer!',
+      0xffd700,
+      0x3e2a08,
+      () => {
+        if (!this.musicOn) { synthMusic.start(); this.musicOn = true; }
+        this.scene.start('CoinRunnerScene');
+      },
+      'runner',
+    );
+
+    // === COMING SOON placeholder ===
+    const comingSoonY = cardStartY + (cardH + cardGap) * 2;
+    const csGfx = this.add.graphics();
+    csGfx.fillStyle(0x1a1a3e, 0.3);
+    csGfx.fillRoundedRect(cx - cardW / 2, comingSoonY, cardW, 50, 12);
+    csGfx.lineStyle(1, COLORS.BORDER, 0.3);
+    csGfx.strokeRoundedRect(cx - cardW / 2, comingSoonY, cardW, 50, 12);
+
+    this.add.text(cx, comingSoonY + 25, 'EM BREVE...  Mais jogos!', {
+      fontSize: '14px', fontFamily: 'Arial', color: '#555555',
     }).setOrigin(0.5);
-
-    // === PLAY BUTTON - BIG ===
-    const btnY = h * 0.68;
-    const btnW = w - 60;
-    const btnH2 = 65;
-
-    const btnGlow = this.add.graphics();
-    btnGlow.fillStyle(COLORS.CYAN, 0.1);
-    btnGlow.fillRoundedRect(cx - btnW / 2 - 4, btnY - 4, btnW + 8, btnH2 + 8, 16);
-
-    const btnBg = this.add.graphics();
-    btnBg.fillStyle(COLORS.CYAN);
-    btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 12);
-
-    this.add.text(cx, btnY + btnH2 / 2, 'JOGAR', {
-      fontSize: '28px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
-    }).setOrigin(0.5);
-
-    const playHit = this.add.rectangle(cx, btnY + btnH2 / 2, btnW, btnH2).setInteractive({ useHandCursor: true });
-    playHit.on('pointerover', () => {
-      btnBg.clear(); btnBg.fillStyle(0x44a08d); btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 12);
-    });
-    playHit.on('pointerout', () => {
-      btnBg.clear(); btnBg.fillStyle(COLORS.CYAN); btnBg.fillRoundedRect(cx - btnW / 2, btnY, btnW, btnH2, 12);
-    });
-    playHit.on('pointerdown', () => {
-      if (!this.musicOn) { synthMusic.start(); this.musicOn = true; }
-      this.scene.start('CrashScene');
-    });
-
-    this.tweens.add({ targets: btnGlow, alpha: { from: 0.3, to: 1 }, duration: 1200, yoyo: true, repeat: -1 });
 
     // Music toggle
-    const musicText = this.add.text(cx, h * 0.83, this.musicOn ? 'MUSICA: ON' : 'MUSICA: OFF', {
+    const musicText = this.add.text(cx, h * 0.85, this.musicOn ? 'MUSICA: ON' : 'MUSICA: OFF', {
       fontSize: '14px', fontFamily: 'Arial', color: '#555555',
     }).setOrigin(0.5).setInteractive({ useHandCursor: true });
 
@@ -160,8 +161,84 @@ export class MenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // Footer
-    this.add.text(cx, h - 20, 'v2.0 - Offline Demo', {
+    this.add.text(cx, h - 20, 'v3.0 - Offline Demo', {
       fontSize: '10px', fontFamily: 'Arial', color: '#333333',
     }).setOrigin(0.5);
+  }
+
+  private createGameCard(
+    cx: number, y: number, w: number, h: number,
+    title: string, subtitle: string, desc: string,
+    accentColor: number, bgColor: number,
+    onClick: () => void,
+    iconKey: string,
+  ): void {
+    // Card background
+    const cardBg = this.add.graphics();
+    cardBg.fillStyle(bgColor, 0.7);
+    cardBg.fillRoundedRect(cx - w / 2, y, w, h, 12);
+    cardBg.lineStyle(2, accentColor, 0.6);
+    cardBg.strokeRoundedRect(cx - w / 2, y, w, h, 12);
+
+    // Icon
+    const icon = this.add.image(cx - w / 2 + 40, y + h / 2, iconKey).setScale(2.5);
+    this.tweens.add({
+      targets: icon,
+      y: y + h / 2 - 5,
+      duration: 1500,
+      yoyo: true,
+      repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    // Title
+    this.add.text(cx + 10, y + 15, title, {
+      fontSize: '22px', fontFamily: 'Arial',
+      color: '#' + accentColor.toString(16).padStart(6, '0'),
+      fontStyle: 'bold',
+    }).setOrigin(0.5, 0);
+
+    // Subtitle
+    this.add.text(cx + 10, y + 42, subtitle, {
+      fontSize: '12px', fontFamily: 'Arial', color: '#aaaaaa',
+    }).setOrigin(0.5, 0);
+
+    // Description
+    this.add.text(cx + 10, y + 60, desc, {
+      fontSize: '11px', fontFamily: 'Arial', color: '#888888',
+      align: 'center',
+    }).setOrigin(0.5, 0);
+
+    // Play button
+    const btnW = 90;
+    const btnH = 28;
+    const btnX = cx + w / 2 - 65;
+    const btnY = y + h - 38;
+
+    const btnGfx = this.add.graphics();
+    btnGfx.fillStyle(accentColor);
+    btnGfx.fillRoundedRect(btnX, btnY, btnW, btnH, 6);
+
+    this.add.text(btnX + btnW / 2, btnY + btnH / 2, 'JOGAR', {
+      fontSize: '14px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
+    }).setOrigin(0.5);
+
+    // Hit area for entire card
+    const hitArea = this.add.rectangle(cx, y + h / 2, w, h).setInteractive({ useHandCursor: true });
+    hitArea.on('pointerover', () => {
+      cardBg.clear();
+      cardBg.fillStyle(bgColor, 0.9);
+      cardBg.fillRoundedRect(cx - w / 2, y, w, h, 12);
+      cardBg.lineStyle(2, accentColor, 1);
+      cardBg.strokeRoundedRect(cx - w / 2, y, w, h, 12);
+    });
+    hitArea.on('pointerout', () => {
+      cardBg.clear();
+      cardBg.fillStyle(bgColor, 0.7);
+      cardBg.fillRoundedRect(cx - w / 2, y, w, h, 12);
+      cardBg.lineStyle(2, accentColor, 0.6);
+      cardBg.strokeRoundedRect(cx - w / 2, y, w, h, 12);
+    });
+    hitArea.on('pointerdown', onClick);
   }
 }
