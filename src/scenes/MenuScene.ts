@@ -292,6 +292,7 @@ export class MenuScene extends Phaser.Scene {
       { icon: '4.', text: 'Moedas roxas premium valem\n   +0.10x cada!' },
       { icon: '5.', text: 'Pressione CASH OUT a qualquer\n   momento para garantir seus ganhos.' },
       { icon: '6.', text: 'Se voce morrer, perde a aposta!' },
+      { icon: '!', text: 'Roleta: o 1o obstaculo pode ser\\n   impossivel! (chance configuravel)' },
     ];
 
     let yPos = panelY + 90;

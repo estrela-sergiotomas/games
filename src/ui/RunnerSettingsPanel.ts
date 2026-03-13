@@ -38,6 +38,7 @@ export class RunnerSettingsPanel {
     { label: 'Gap Maximo', key: 'gapMax', get: () => RunnerSettings.gapSizeMax, set: v => RunnerSettings.gapSizeMax = v, min: 40, max: 120, step: 5, format: v => v.toFixed(0), desc: 'Tamanho maximo do buraco' },
     { label: 'Intervalo Bullet', key: 'bullet', get: () => RunnerSettings.bulletInterval, set: v => RunnerSettings.bulletInterval = v, min: 2000, max: 10000, step: 500, format: v => (v / 1000).toFixed(1) + 's', desc: 'Tempo entre Bullet Bills' },
     { label: 'Distancia Tutorial', key: 'tutorial', get: () => RunnerSettings.tutorialDistance, set: v => RunnerSettings.tutorialDistance = v, min: 200, max: 1500, step: 100, format: v => v.toFixed(0), desc: 'Distancia segura no inicio' },
+    { label: '% Morte Instantanea', key: 'instantDeath', get: () => RunnerSettings.instantDeathChance, set: v => RunnerSettings.instantDeathChance = v, min: 0, max: 0.5, step: 0.01, format: v => (v * 100).toFixed(0) + '%', desc: 'Chance do 1o obstaculo ser impossivel' },
   ];
 
   constructor(scene: Phaser.Scene, onClose: () => void) {

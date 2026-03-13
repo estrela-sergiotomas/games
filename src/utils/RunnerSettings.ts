@@ -4,8 +4,8 @@
  */
 export const RunnerSettings = {
   // Physics
-  gravity: 0.6,
-  jumpForce: -10.5,
+  gravity: 0.3,
+  jumpForce: -11.5,
 
   // Speed
   baseSpeed: 2.5,
@@ -32,13 +32,16 @@ export const RunnerSettings = {
   // Bullet Bills
   bulletInterval: 5000, // ms between bullet spawns
 
+  // Roulette mechanic - chance first obstacle is impossible
+  instantDeathChance: 0.03, // 3% chance
+
   // Tutorial
   tutorialDistance: 600,
 
   // Reset to defaults
   reset(): void {
-    RunnerSettings.gravity = 0.6;
-    RunnerSettings.jumpForce = -10.5;
+    RunnerSettings.gravity = 0.3;
+    RunnerSettings.jumpForce = -11.5;
     RunnerSettings.baseSpeed = 2.5;
     RunnerSettings.maxSpeed = 4.5;
     RunnerSettings.speedThreshold = 10;
@@ -52,6 +55,7 @@ export const RunnerSettings = {
     RunnerSettings.gapSizeMin = 40;
     RunnerSettings.gapSizeMax = 60;
     RunnerSettings.bulletInterval = 5000;
+    RunnerSettings.instantDeathChance = 0.03;
     RunnerSettings.tutorialDistance = 600;
   },
 };

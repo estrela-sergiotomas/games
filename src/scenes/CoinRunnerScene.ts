@@ -216,13 +216,7 @@ export class CoinRunnerScene extends Phaser.Scene {
       seg.grounds.push(tile);
     }
 
-    // Place some tutorial coins on the ground (easy to collect)
-    for (let i = 0; i < 5; i++) {
-      const cx = 250 + i * 40;
-      const coin = this.add.image(cx, this.groundY - 20, 'coin').setScale(1.3);
-      this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      seg.coins.push({ sprite: coin, premium: false });
-    }
+    // No coins in tutorial area - coins only appear after first obstacle
 
     this.segments.push(seg);
     this.nextSegmentX = seg.endX;
@@ -252,10 +246,22 @@ export class CoinRunnerScene extends Phaser.Scene {
     // Use 70% safety margin so gaps are always comfortable to clear
     const airTime = 2 * Math.abs(this.JUMP_FORCE) / this.GRAVITY;
     const maxJumpable = Math.floor(this.BASE_SPEED * airTime * 0.7);
-    const gapBefore = this.segmentCount <= 2 ? 0 : Math.min(maxJumpable, Phaser.Math.Between(
-      gapMin,
-      gapMax + Math.floor(difficulty * 10)
-    ));
+    // Roulette mechanic: first obstacle has a configurable chance of being impossible
+    const isFirstObstacle = this.segmentCount === 3; // first segment where enemies/gaps appear
+    const instantDeath = isFirstObstacle && Math.random() < RunnerSettings.instantDeathChance;
+
+    let gapBefore: number;
+    if (this.segmentCount <= 2) {
+      gapBefore = 0;
+    } else if (instantDeath) {
+      // Impossible gap - wider than max jumpable distance, no bridge platform
+      gapBefore = maxJumpable + Phaser.Math.Between(40, 80);
+    } else {
+      gapBefore = Math.min(maxJumpable, Phaser.Math.Between(
+        gapMin,
+        gapMax + Math.floor(difficulty * 10)
+      ));
+    }
 
     const segStartX = this.nextSegmentX + gapBefore;
     const segEndX = segStartX + segLen;
@@ -279,8 +285,8 @@ export class CoinRunnerScene extends Phaser.Scene {
       seg.grounds.push(tile);
     }
 
-    // ALWAYS add a floating platform above the gap (makes gap jumpable)
-    if (gapBefore > 30) {
+    // Add a floating platform above the gap (makes gap jumpable) - skip for instant death gaps
+    if (gapBefore > 30 && !instantDeath) {
       const platX = segStartX - gapBefore / 2 - 28;
       const platY = this.groundY - Phaser.Math.Between(30, 50);
       const platW = Math.max(64, gapBefore * 0.6);
@@ -297,15 +303,17 @@ export class CoinRunnerScene extends Phaser.Scene {
       }
     }
 
-    // Add coins on the ground (some may be premium)
-    const numCoins = Phaser.Math.Between(2, 4);
-    for (let c = 0; c < numCoins; c++) {
-      const cx = segStartX + Phaser.Math.Between(20, segLen - 20);
-      const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
-      const tex = isPremium ? 'coin_premium' : 'coin';
-      const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 1.4 : 1.2);
-      this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 500 + c * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      seg.coins.push({ sprite: coin, premium: isPremium });
+    // Add coins on the ground - only after first obstacle (segment 3+)
+    if (this.segmentCount >= 3) {
+      const numCoins = Phaser.Math.Between(2, 4);
+      for (let c = 0; c < numCoins; c++) {
+        const cx = segStartX + Phaser.Math.Between(20, segLen - 20);
+        const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
+        const tex = isPremium ? 'coin_premium' : 'coin';
+        const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 1.4 : 1.2);
+        this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 500 + c * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        seg.coins.push({ sprite: coin, premium: isPremium });
+      }
     }
 
     // ENEMIES - gradually introduce types, density from settings
