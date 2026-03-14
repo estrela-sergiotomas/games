@@ -3,41 +3,73 @@ import { GAME_CONFIG } from '../utils/constants';
 import { GameState } from '../utils/GameState';
 import { SoundFX } from '../assets/sfx';
 import { RunnerSettings } from '../utils/RunnerSettings';
+import {
+  contactShapeDef, sensorShapeDef, platformShapeDef,
+  pxFrameToMs, toB2Pos, WORLD_SCALE,
+  type PhysicsUserData, type EntityKind,
+} from '../utils/RunnerPhysics';
+
+import {
+  SetWorldScale, CreateWorld, WorldStep, CreateBoxPolygon,
+  AddSpriteToWorld, UpdateWorldSprites, RemoveSpriteFromWorld,
+  b2Body_SetLinearVelocity, b2Body_GetLinearVelocity,
+  b2Body_GetPosition,
+  b2Body_GetUserData,
+  b2World_GetContactEvents, b2World_GetSensorEvents,
+  b2World_SetPreSolveCallback,
+  b2Shape_GetBody,
+  b2DestroyBody, b2DestroyWorld,
+  b2DefaultWorldDef,
+  pxm, mpx, b2Vec2, DYNAMIC, KINEMATIC,
+} from 'phaser-box2d';
 
 type RunnerPhase = 'betting' | 'tutorial' | 'running' | 'cashout_anim' | 'result';
 
 // Enemy types with different behaviors
 const ENEMY_TYPES = [
-  'enemy_goomba',   // 1. walks on platform - can stomp
-  'enemy_koopa',    // 2. walks faster - can stomp
-  'enemy_spiny',    // 3. walks - CANNOT stomp (spikes!)
-  'enemy_bobomb',   // 4. walks then explodes
-  'enemy_bullet',   // 5. flies horizontally from right
-  'enemy_piranha',  // 6. pops up/down from pipes
+  'enemy_goomba',   // 1. walks on platform - can stomp (slime 50x28)
+  'enemy_koopa',    // 2. walks faster - can stomp (snail 54x31)
+  'enemy_spiny',    // 3. walks - CANNOT stomp (fly 72x36)
+  'enemy_bobomb',   // 4. walks then explodes (blocker 51x51)
+  'enemy_bullet',   // 5. flies horizontally from right (fireball 70x70)
+  'enemy_piranha',  // 6. pops up/down from pipes (plant 70x70)
 ] as const;
+
+// Scale factors for each enemy type to match ~26px display height
+const ENEMY_SCALES: Record<string, number> = {
+  'enemy_goomba': 0.75,
+  'enemy_koopa': 0.65,
+  'enemy_spiny': 0.55,
+  'enemy_bobomb': 0.50,
+  'enemy_bullet': 0.29,
+  'enemy_piranha': 0.37,
+};
 
 interface EnemyData {
   sprite: Phaser.GameObjects.Image;
   type: string;
   baseY: number;
   dead: boolean;
+  bodyId?: any;
 }
 
 interface CoinData {
   sprite: Phaser.GameObjects.Image;
   premium: boolean;
   tutorial?: boolean;
+  bodyId?: any;
 }
 
 interface Segment {
   grounds: Phaser.GameObjects.Image[];
-  platforms: { sprite: Phaser.GameObjects.Image; x: number; y: number; w: number }[];
+  platforms: { sprite: Phaser.GameObjects.Image; x: number; y: number; w: number; bodyId?: any }[];
   coins: CoinData[];
   enemies: EnemyData[];
-  pipes: { sprite: Phaser.GameObjects.Image; piranha?: Phaser.GameObjects.Image; piranhaBaseY?: number }[];
-  qblocks: { sprite: Phaser.GameObjects.Image; hit: boolean; magic: boolean }[];
-  mushrooms: Phaser.GameObjects.Image[];
-  poisonMushrooms: Phaser.GameObjects.Image[];
+  pipes: { sprite: Phaser.GameObjects.Image; piranha?: Phaser.GameObjects.Image; piranhaBaseY?: number; bodyId?: any; topBodyId?: any; piranhaBodyId?: any }[];
+  qblocks: { sprite: Phaser.GameObjects.Image; hit: boolean; magic: boolean; bodyId?: any }[];
+  mushrooms: (Phaser.GameObjects.Image & { _bodyId?: any })[];
+  poisonMushrooms: (Phaser.GameObjects.Image & { _bodyId?: any })[];
+  bodyIds: any[];
   startX: number;
   endX: number;
 }
@@ -51,11 +83,14 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   // Runner
   private runner!: Phaser.GameObjects.Image;
-  private velocityY = 0;
   private isOnGround = true;
   private runnerBaseX = 80;
   private groundY = 0;
-  private runnerH = 24; // sprite height for collisions
+
+  // Box2D
+  private worldId: any = null;
+  private runnerBodyId: any = null;
+  private groundContactCount = 0;
 
   // World scrolling
   private segments: Segment[] = [];
@@ -94,6 +129,10 @@ export class CoinRunnerScene extends Phaser.Scene {
   private readonly MAX_JUMP_HOLD = 280; // ms max hold for highest jump
   private readonly MIN_JUMP_FORCE_RATIO = 0.45; // min jump = 45% of full
 
+  // Coyote time: grace frames after leaving ground to prevent seam falls
+  private coyoteFrames = 0;
+  private readonly COYOTE_MAX = 5; // frames of grace after losing ground contact
+
   // Challenge bonus
   private challengesCompleted = 0;
   private coinMultiplierBonus = 1; // multiplied to coin values after challenge
@@ -117,6 +156,11 @@ export class CoinRunnerScene extends Phaser.Scene {
   private challengeGoalText?: Phaser.GameObjects.Text;
   private frozen = false; // world frozen during challenge popup
 
+  // Debug telemetry
+  private debugText?: Phaser.GameObjects.Text;
+  private debugFrameCount = 0;
+  private telemetryHistory: any[] = [];
+
   constructor() {
     super({ key: 'CoinRunnerScene' });
   }
@@ -135,7 +179,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.scrollOffset = 0;
     this.nextSegmentX = 0;
     this.segmentCount = 0;
-    this.velocityY = 0;
     this.isOnGround = true;
     this.isDead = false;
     this.runFrame = 0;
@@ -156,12 +199,141 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.jumpHoldTime = 0;
     this.challengesCompleted = 0;
     this.coinMultiplierBonus = 1;
+    this.groundContactCount = 0;
+    this.coyoteFrames = 0;
+
+    // Initialize Box2D world
+    this.initPhysicsWorld();
 
     this.createBackground(w, h);
     this.createInitialGround(w);
     this.createRunner();
     this.createUI(w, h);
     this.setupInput();
+
+    // Set up one-way platform pre-solve callback
+    this.setupPreSolve();
+
+    // Debug telemetry overlay
+    this.debugText = this.add.text(5, 5, '', {
+      fontSize: '10px', fontFamily: 'monospace', color: '#00ff00',
+      backgroundColor: '#000000aa', padding: { x: 4, y: 2 },
+    }).setDepth(9999).setScrollFactor(0);
+  }
+
+  // === BOX2D WORLD ===
+  private initPhysicsWorld(): void {
+    SetWorldScale(WORLD_SCALE);
+    const worldDef = b2DefaultWorldDef();
+    // Original gravity: 0.3 px/frame² at 60fps = 0.3 * 3600 px/s² = 1080 px/s² = 36 m/s²
+    const gravityMs2 = pxm(this.GRAVITY * 3600); // convert px/frame² to m/s²
+    worldDef.gravity = new b2Vec2(0, -gravityMs2);
+    console.log('[INIT] Gravity:', { original: this.GRAVITY, ms2: gravityMs2.toFixed(2) });
+    const { worldId } = CreateWorld({ worldDef });
+    this.worldId = worldId;
+  }
+
+  private setupPreSolve(): void {
+    b2World_SetPreSolveCallback(this.worldId, (shapeIdA: any, shapeIdB: any, _manifold: any, _ctx: any) => {
+      const bodyA = b2Shape_GetBody(shapeIdA);
+      const bodyB = b2Shape_GetBody(shapeIdB);
+      const udA = b2Body_GetUserData(bodyA) as PhysicsUserData | null;
+      const udB = b2Body_GetUserData(bodyB) as PhysicsUserData | null;
+
+      console.log(`[PRESOLVE] A=${udA?.kind ?? 'null'} B=${udB?.kind ?? 'null'}`);
+
+      const isPlat = udA?.kind === 'platform' || udB?.kind === 'platform';
+      if (!isPlat) return true;
+
+      const playerBody = udA?.kind === 'player' ? bodyA : udB?.kind === 'player' ? bodyB : null;
+      if (!playerBody) return true;
+
+      const vel = b2Body_GetLinearVelocity(playerBody);
+      // Y-up: vel.y > 0 = moving up → pass through platform
+      if (vel.y > 0.1) return false;
+      return true;
+    }, null);
+  }
+
+  // === BODY CREATION HELPERS ===
+  private createGroundBody(tileX: number, tileY: number, tileW: number, tileH: number): any {
+    // Add 4px overlap on each side to prevent falling through segment seams
+    const overlap = 4;
+    const pos = toB2Pos(tileX + tileW / 2, tileY + tileH / 2);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(tileW / 2 + overlap), pxm(tileH / 2)),
+      shapeDef: contactShapeDef(0, 0.5),
+      userData: { kind: 'ground' } as PhysicsUserData,
+    });
+    return bodyId;
+  }
+
+  private createPlatformBody(x: number, y: number, w: number, h: number): any {
+    const pos = toB2Pos(x + w / 2, y + h / 2);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(w / 2), pxm(h / 2)),
+      shapeDef: platformShapeDef(0.5),
+      userData: { kind: 'platform' } as PhysicsUserData,
+    });
+    return bodyId;
+  }
+
+  private createSensorBody(x: number, y: number, w: number, h: number, kind: EntityKind, ref?: any): any {
+    const pos = toB2Pos(x, y);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(w / 2), pxm(h / 2)),
+      shapeDef: sensorShapeDef(),
+      userData: { kind, ref } as PhysicsUserData,
+    });
+    return bodyId;
+  }
+
+  private createEnemyBody(x: number, y: number, w: number, h: number, ref: EnemyData): any {
+    const pos = toB2Pos(x, y);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(w / 2), pxm(h / 2)),
+      shapeDef: contactShapeDef(0, 0),
+      userData: { kind: 'enemy', ref } as PhysicsUserData,
+    });
+    return bodyId;
+  }
+
+  private createPipeBody(x: number, y: number, w: number, h: number): { bodyId: any; topBodyId: any } {
+    // Main pipe body (side collision = death)
+    const pos = toB2Pos(x, y + h / 2);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(w / 2), pxm(h / 2)),
+      shapeDef: contactShapeDef(0, 0),
+      userData: { kind: 'pipe_body' } as PhysicsUserData,
+    });
+
+    // Top of pipe (landable, thin)
+    const topPos = toB2Pos(x, y);
+    const { bodyId: topBodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(topPos.x, topPos.y),
+      size: new b2Vec2(pxm(w / 2 + 2), pxm(2)),
+      shapeDef: contactShapeDef(0, 0.5),
+      userData: { kind: 'pipe_top' } as PhysicsUserData,
+    });
+
+    return { bodyId, topBodyId };
   }
 
   // === BACKGROUND ===
@@ -191,14 +363,13 @@ export class CoinRunnerScene extends Phaser.Scene {
         Phaser.Math.Between(0, w),
         Phaser.Math.Between(30, 150),
         'cloud'
-      ).setAlpha(0.7).setScale(Phaser.Math.FloatBetween(0.6, 1.2));
+      ).setAlpha(0.7).setScale(Phaser.Math.FloatBetween(0.3, 0.6));
       this.clouds.push(cloud);
     }
   }
 
   // === GROUND ===
   private createInitialGround(w: number): void {
-    // Create a long safe ground segment at start
     const seg: Segment = {
       grounds: [],
       platforms: [],
@@ -208,21 +379,40 @@ export class CoinRunnerScene extends Phaser.Scene {
       qblocks: [],
       mushrooms: [],
       poisonMushrooms: [],
+      bodyIds: [],
       startX: 0,
       endX: w + this.TUTORIAL_SAFE_DISTANCE,
     };
 
-    for (let x = 0; x < seg.endX + 64; x += 32) {
-      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0).setDepth(10);
+    // Create visual tiles (no physics bodies on individual tiles)
+    const tileCount = Math.ceil((seg.endX + 64) / 32);
+    for (let i = 0; i < tileCount; i++) {
+      const x = i * 32;
+      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0).setDisplaySize(32, 32).setDepth(10);
       seg.grounds.push(tile);
     }
+
+    // Create ONE ground physics body spanning the entire segment (no sprite link)
+    const totalWidth = tileCount * 32;
+    const groundBodyId = this.createGroundBody(0, this.groundY, totalWidth, 32);
+    seg.bodyIds.push(groundBodyId);
+
+    console.log('[TELEMETRY] Initial ground:', {
+      tileCount, totalWidth, groundY: this.groundY,
+      bodyPos: (() => { const p = b2Body_GetPosition(groundBodyId); return { x: mpx(p.x).toFixed(0), y: (-mpx(p.y)).toFixed(0) }; })(),
+    });
 
     // Tutorial coins (silver, worth 0.001x each)
     for (let i = 0; i < 5; i++) {
       const cx = 250 + i * 40;
-      const coin = this.add.image(cx, this.groundY - 20, 'coin_tutorial').setScale(1.3).setDepth(12);
+      const coin = this.add.image(cx, this.groundY - 20, 'coin_tutorial').setScale(0.30).setDepth(12);
       this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 600, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-      seg.coins.push({ sprite: coin, premium: false, tutorial: true });
+      const coinData: CoinData = { sprite: coin, premium: false, tutorial: true };
+      const bodyId = this.createSensorBody(cx, this.groundY - 22, 20, 20, 'coin', coinData);
+      coinData.bodyId = bodyId;
+      AddSpriteToWorld(this.worldId, coin, { bodyId });
+      seg.bodyIds.push(bodyId);
+      seg.coins.push(coinData);
     }
 
     this.segments.push(seg);
@@ -231,37 +421,57 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   // === RUNNER ===
   private createRunner(): void {
-    this.runner = this.add.image(this.runnerBaseX, this.groundY - 2, 'runner')
-      .setScale(2)
-      .setOrigin(0.5, 1)
-      .setDepth(6); // behind pipes for "entering pipe" effect
+    this.runner = this.add.image(this.runnerBaseX, this.groundY, 'runner')
+      .setScale(0.52)
+      .setOrigin(0.5, 1) // feet at (x, y)
+      .setDepth(6);
+
+    // Create dynamic body for runner
+    // Body center at groundY - 12 (half-height=12), so body bottom = groundY (touching ground)
+    // We offset 2px up to avoid initial overlap bounce
+    const pos = toB2Pos(this.runnerBaseX, this.groundY - 14);
+    const sd = contactShapeDef(1, 0, 0);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: DYNAMIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(9), pxm(12)), // 18x24 px hitbox
+      fixedRotation: true,
+      shapeDef: sd,
+      userData: { kind: 'player' } as PhysicsUserData,
+    });
+    this.runnerBodyId = bodyId;
+    // Do NOT use AddSpriteToWorld — we sync manually to offset for sprite origin(0.5, 1)
+
+    // Debug: log runner body creation
+    const rPos = b2Body_GetPosition(this.runnerBodyId);
+    console.log('[TELEMETRY] Runner body created:', {
+      phaserXY: { x: this.runnerBaseX, y: this.groundY - 2 },
+      b2dPos: { x: rPos.x, y: rPos.y },
+      b2dPosPx: { x: mpx(rPos.x), y: -mpx(rPos.y) },
+      halfSize: { w: 9, h: 12 },
+      groundY: this.groundY,
+    });
   }
 
   // === SEGMENT GENERATION ===
   private generateSegment(): void {
     this.segmentCount++;
-    const w = GAME_CONFIG.WIDTH;
     const difficulty = Math.min(this.segmentCount / 30, 1); // 0..1 over 30 segments
 
     // Segment length - randomized to prevent prediction
     const segLen = Phaser.Math.Between(150, 400) + Phaser.Math.Between(-30, 30);
     const gapMin = RunnerSettings.gapSizeMin;
     const gapMax = RunnerSettings.gapSizeMax;
-    // Calculate max jumpable distance from physics:
-    // airTime = 2 * |jumpForce| / gravity, horizontalDist = baseSpeed * airTime
-    // With jumpForce=-10.5, gravity=0.6, baseSpeed=2.5: airTime≈35, dist≈87
-    // Use 70% safety margin so gaps are always comfortable to clear
     const airTime = 2 * Math.abs(this.JUMP_FORCE) / this.GRAVITY;
     const maxJumpable = Math.floor(this.BASE_SPEED * airTime * 0.7);
-    // Roulette mechanic: first obstacle has a configurable chance of being impossible
-    const isFirstObstacle = this.segmentCount === 3; // first segment where enemies/gaps appear
+    const isFirstObstacle = this.segmentCount === 3;
     const instantDeath = isFirstObstacle && Math.random() < RunnerSettings.instantDeathChance;
 
     let gapBefore: number;
     if (this.segmentCount <= 2) {
       gapBefore = 0;
     } else if (instantDeath) {
-      // Impossible gap - wider than max jumpable distance, no bridge platform
       gapBefore = maxJumpable + Phaser.Math.Between(40, 80);
     } else {
       gapBefore = Math.min(maxJumpable, Phaser.Math.Between(
@@ -282,14 +492,22 @@ export class CoinRunnerScene extends Phaser.Scene {
       qblocks: [],
       mushrooms: [],
       poisonMushrooms: [],
+      bodyIds: [],
       startX: segStartX,
       endX: segEndX,
     };
 
-    // Ground tiles
+    // Ground tiles (visual only, no individual physics bodies)
     for (let x = segStartX; x < segEndX; x += 32) {
-      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0).setDepth(10);
+      const tile = this.add.image(x, this.groundY, 'ground').setOrigin(0, 0).setDisplaySize(32, 32).setDepth(10);
       seg.grounds.push(tile);
+    }
+
+    // ONE ground body for the entire segment
+    const segWidth = segEndX - segStartX;
+    if (segWidth > 0) {
+      const groundBodyId = this.createGroundBody(segStartX, this.groundY, segWidth, 32);
+      seg.bodyIds.push(groundBodyId);
     }
 
     // Add a floating platform above the gap (makes gap jumpable) - skip for instant death gaps
@@ -298,15 +516,23 @@ export class CoinRunnerScene extends Phaser.Scene {
       const platY = this.groundY - Phaser.Math.Between(30, 50);
       const platW = Math.max(64, gapBefore * 0.6);
       const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16).setDepth(9);
-      seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW });
+      const bodyId = this.createPlatformBody(platX, platY, platW, 16);
+      AddSpriteToWorld(this.worldId, plat, { bodyId });
+      seg.bodyIds.push(bodyId);
+      seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW, bodyId });
 
       // Coins above platform
       for (let c = 0; c < 2; c++) {
         const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
         const tex = isPremium ? 'coin_premium' : 'coin';
-        const coin = this.add.image(platX + 15 + c * 20, platY - 20, tex).setScale(isPremium ? 1.4 : 1.2).setDepth(12);
+        const coin = this.add.image(platX + 15 + c * 20, platY - 20, tex).setScale(isPremium ? 0.40 : 0.27).setDepth(12);
         this.tweens.add({ targets: coin, y: platY - 25, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        seg.coins.push({ sprite: coin, premium: isPremium });
+        const coinData: CoinData = { sprite: coin, premium: isPremium };
+        const cBodyId = this.createSensorBody(platX + 15 + c * 20, platY - 22, 18, 18, 'coin', coinData);
+        coinData.bodyId = cBodyId;
+        AddSpriteToWorld(this.worldId, coin, { bodyId: cBodyId });
+        seg.bodyIds.push(cBodyId);
+        seg.coins.push(coinData);
       }
     }
 
@@ -317,26 +543,38 @@ export class CoinRunnerScene extends Phaser.Scene {
         const cx = segStartX + Phaser.Math.Between(20, segLen - 20);
         const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
         const tex = isPremium ? 'coin_premium' : 'coin';
-        const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 1.4 : 1.2).setDepth(12);
+        const coin = this.add.image(cx, this.groundY - 20, tex).setScale(isPremium ? 0.40 : 0.27).setDepth(12);
         this.tweens.add({ targets: coin, y: this.groundY - 25, duration: 500 + c * 80, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        seg.coins.push({ sprite: coin, premium: isPremium });
+        const coinData: CoinData = { sprite: coin, premium: isPremium };
+        const bodyId = this.createSensorBody(cx, this.groundY - 22, 18, 18, 'coin', coinData);
+        coinData.bodyId = bodyId;
+        AddSpriteToWorld(this.worldId, coin, { bodyId });
+        seg.bodyIds.push(bodyId);
+        seg.coins.push(coinData);
       }
     }
 
-    // ENEMIES - gradually introduce types, density from settings
+    // ENEMIES
     if (this.segmentCount >= 3 && Math.random() < RunnerSettings.enemyDensity * (0.5 + difficulty * 0.5)) {
       const maxEnemyType = Math.min(Math.floor(this.segmentCount / 3), 4);
       const typeIdx = Phaser.Math.Between(0, maxEnemyType);
       const enemyType = ENEMY_TYPES[typeIdx];
-      // Truly random position within segment (anti-bot)
       const ex = segStartX + Phaser.Math.Between(30, segLen - 30) + Phaser.Math.FloatBetween(-10, 10);
       const ey = this.groundY - 2;
 
-      const sprite = this.add.image(ex, ey, enemyType).setScale(1.3).setOrigin(0.5, 1).setDepth(11);
+      const sprite = this.add.image(ex, ey, enemyType).setScale(ENEMY_SCALES[enemyType] || 0.5).setOrigin(0.5, 1).setDepth(11);
+
+      const enemyData: EnemyData = { sprite, type: enemyType, baseY: ey, dead: false };
+
+      // Create enemy body
+      const bodyId = this.createEnemyBody(ex, ey - 13, 16, 22, enemyData);
+      enemyData.bodyId = bodyId;
+      AddSpriteToWorld(this.worldId, sprite, { bodyId });
+      seg.bodyIds.push(bodyId);
 
       // Patrol behavior for ground enemies
-      if (typeIdx <= 3) { // goomba, koopa, spiny, bobomb
-        const patrolSpeed = typeIdx === 1 ? 2500 : 1800; // koopa faster
+      if (typeIdx <= 3) {
+        const patrolSpeed = typeIdx === 1 ? 2500 : 1800;
         const patrolRange = 40;
         this.tweens.add({
           targets: sprite,
@@ -348,7 +586,7 @@ export class CoinRunnerScene extends Phaser.Scene {
         });
       }
 
-      seg.enemies.push({ sprite, type: enemyType, baseY: ey, dead: false });
+      seg.enemies.push(enemyData);
 
       // Bob-omb: add spark flicker
       if (typeIdx === 3) {
@@ -362,9 +600,20 @@ export class CoinRunnerScene extends Phaser.Scene {
       const pipe = this.add.image(px, this.groundY - 36, 'pipe').setScale(1.2).setOrigin(0.5, 0).setDepth(8);
       const pipeData: Segment['pipes'][0] = { sprite: pipe };
 
+      // Create pipe bodies (main body + landable top)
+      const pw = 32 * 1.2;
+      const ph = 40 * 1.2;
+      const { bodyId, topBodyId } = this.createPipeBody(px, this.groundY - 36, pw, ph);
+      pipeData.bodyId = bodyId;
+      pipeData.topBodyId = topBodyId;
+      seg.bodyIds.push(bodyId, topBodyId);
+      // Don't AddSpriteToWorld for pipe - position synced via kinematic velocity
+      // Actually we should, so UpdateWorldSprites moves it
+      AddSpriteToWorld(this.worldId, pipe, { bodyId });
+
       // Piranha plant pops from pipe
       if (this.segmentCount >= 8 && Math.random() < 0.5) {
-        const piranha = this.add.image(px, this.groundY - 60, 'enemy_piranha').setScale(1.3).setOrigin(0.5, 1).setDepth(7);
+        const piranha = this.add.image(px, this.groundY - 60, 'enemy_piranha').setScale(0.37).setOrigin(0.5, 1).setDepth(7);
         const baseY = this.groundY - 60;
         this.tweens.add({
           targets: piranha,
@@ -376,44 +625,61 @@ export class CoinRunnerScene extends Phaser.Scene {
         });
         pipeData.piranha = piranha;
         pipeData.piranhaBaseY = baseY;
+
+        // Piranha body
+        const piranhaBodyId = this.createEnemyBody(px, baseY - 12, 14, 20, { sprite: piranha, type: 'enemy_piranha', baseY, dead: false });
+        (b2Body_GetUserData(piranhaBodyId) as PhysicsUserData).kind = 'piranha';
+        pipeData.piranhaBodyId = piranhaBodyId;
+        AddSpriteToWorld(this.worldId, piranha, { bodyId: piranhaBodyId });
+        seg.bodyIds.push(piranhaBodyId);
       }
       seg.pipes.push(pipeData);
     }
 
-    // Question blocks (some may be magic challenge blocks)
-    // Challenge blocks appear more often as player progresses (exponential scaling)
+    // Question blocks
     if (Math.random() < 0.3) {
       const qx = segStartX + Phaser.Math.Between(30, segLen - 30);
       const qy = this.groundY - Phaser.Math.Between(55, 75);
-      // Base 5% + exponential increase: doubles every 8 segments, capped at 60%
       const challengeChance = Math.min(0.6,
         RunnerSettings.magicBlockChance + (this.challengesCompleted * 0.05) + Math.pow(1.09, this.segmentCount) * 0.005
       );
       const isMagic = Math.random() < challengeChance;
       const tex = isMagic ? 'magic_block' : 'qblock';
-      const qblock = this.add.image(qx, qy, tex).setScale(1.4).setDepth(12);
+      const qblock = this.add.image(qx, qy, tex).setScale(0.40).setDepth(12);
       if (isMagic) {
-        // Pulsing glow for magic blocks
         this.tweens.add({ targets: qblock, alpha: 0.6, duration: 400, yoyo: true, repeat: -1 });
       }
-      seg.qblocks.push({ sprite: qblock, hit: false, magic: isMagic });
+      const qData = { sprite: qblock, hit: false, magic: isMagic, bodyId: undefined as any };
+      const bodyId = this.createSensorBody(qx, qy, 22, 22, 'qblock', qData);
+      qData.bodyId = bodyId;
+      AddSpriteToWorld(this.worldId, qblock, { bodyId });
+      seg.bodyIds.push(bodyId);
+      seg.qblocks.push(qData);
     }
 
     // Mushroom power-up (rare)
     if (Math.random() < 0.1 && this.segmentCount > 5) {
       const mx = segStartX + Phaser.Math.Between(20, segLen - 20);
       const my = this.groundY - 20;
-      const mush = this.add.image(mx, my, 'mushroom').setScale(1.3).setDepth(12);
+      const mush = this.add.image(mx, my, 'mushroom').setScale(0.37).setDepth(12) as Phaser.GameObjects.Image & { _bodyId?: any };
       this.tweens.add({ targets: mush, y: my - 8, duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const bodyId = this.createSensorBody(mx, my - 4, 18, 18, 'mushroom', mush);
+      mush._bodyId = bodyId;
+      AddSpriteToWorld(this.worldId, mush, { bodyId });
+      seg.bodyIds.push(bodyId);
       seg.mushrooms.push(mush);
     }
 
-    // Poison mushroom (loses half of gained multiplier!)
+    // Poison mushroom
     if (Math.random() < RunnerSettings.poisonMushroomChance && this.segmentCount > 4) {
       const px2 = segStartX + Phaser.Math.Between(20, segLen - 20);
       const py2 = this.groundY - 20;
-      const poison = this.add.image(px2, py2, 'mushroom_poison').setScale(1.3).setDepth(12);
+      const poison = this.add.image(px2, py2, 'mushroom_poison').setScale(0.37).setDepth(12) as Phaser.GameObjects.Image & { _bodyId?: any };
       this.tweens.add({ targets: poison, y: py2 - 8, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+      const bodyId = this.createSensorBody(px2, py2 - 4, 18, 18, 'poison', poison);
+      poison._bodyId = bodyId;
+      AddSpriteToWorld(this.worldId, poison, { bodyId });
+      seg.bodyIds.push(bodyId);
       seg.poisonMushrooms.push(poison);
     }
 
@@ -423,15 +689,23 @@ export class CoinRunnerScene extends Phaser.Scene {
       const platY = this.groundY - Phaser.Math.Between(50, 80);
       const platW = Phaser.Math.Between(48, 80);
       const plat = this.add.image(platX, platY, 'platform').setOrigin(0, 0).setDisplaySize(platW, 16).setDepth(9);
-      seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW });
+      const bodyId = this.createPlatformBody(platX, platY, platW, 16);
+      AddSpriteToWorld(this.worldId, plat, { bodyId });
+      seg.bodyIds.push(bodyId);
+      seg.platforms.push({ sprite: plat, x: platX, y: platY, w: platW, bodyId });
 
       // Coins on elevated platform
       for (let c = 0; c < 2; c++) {
         const isPremium = Math.random() < RunnerSettings.premiumCoinChance;
         const tex = isPremium ? 'coin_premium' : 'coin';
-        const coin = this.add.image(platX + 10 + c * 22, platY - 18, tex).setScale(isPremium ? 1.4 : 1.2).setDepth(12);
+        const coin = this.add.image(platX + 10 + c * 22, platY - 18, tex).setScale(isPremium ? 0.40 : 0.27).setDepth(12);
         this.tweens.add({ targets: coin, y: platY - 23, duration: 500, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
-        seg.coins.push({ sprite: coin, premium: isPremium });
+        const coinData: CoinData = { sprite: coin, premium: isPremium };
+        const cBodyId = this.createSensorBody(platX + 10 + c * 22, platY - 20, 18, 18, 'coin', coinData);
+        coinData.bodyId = cBodyId;
+        AddSpriteToWorld(this.worldId, coin, { bodyId: cBodyId });
+        seg.bodyIds.push(cBodyId);
+        seg.coins.push(coinData);
       }
     }
 
@@ -482,13 +756,11 @@ export class CoinRunnerScene extends Phaser.Scene {
   private createBetPanel(w: number, h: number): void {
     this.betPanel = this.add.container(0, 0).setDepth(200);
 
-    // Semi-transparent overlay
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.6);
     overlay.fillRect(0, 42, w, h - 82);
     this.betPanel.add(overlay);
 
-    // Panel background
     const panelW = w - 40;
     const panelH = 260;
     const panelX = 20;
@@ -501,25 +773,21 @@ export class CoinRunnerScene extends Phaser.Scene {
     panelBg.strokeRoundedRect(panelX, panelY, panelW, panelH, 16);
     this.betPanel.add(panelBg);
 
-    // Title
     const title = this.add.text(w / 2, panelY + 20, 'FACA SUA APOSTA', {
       fontSize: '20px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
     }).setOrigin(0.5, 0);
     this.betPanel.add(title);
 
-    // Balance display
     const balLabel = this.add.text(w / 2, panelY + 50, `Saldo: ${GameState.balance.toFixed(0)} coins`, {
       fontSize: '14px', fontFamily: 'Arial', color: '#4ecdc4',
     }).setOrigin(0.5, 0);
     this.betPanel.add(balLabel);
 
-    // Bet label
     const betLabel = this.add.text(w / 2, panelY + 80, 'APOSTA', {
       fontSize: '12px', fontFamily: 'Arial', color: '#ffcc99',
     }).setOrigin(0.5, 0);
     this.betPanel.add(betLabel);
 
-    // Bet controls row
     const rowY = panelY + 100;
     const btnSize = 40;
 
@@ -539,7 +807,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     const plusBtn = this.makeBtn(w / 2 + 35, rowY, btnSize, btnSize, '+', 0x8b4513, () => this.changeBet(5));
     this.betPanel.add(plusBtn);
 
-    // Quick bet buttons
     const quickY = rowY + btnSize + 8;
     [5, 10, 25, 50, 100].forEach((amt, i) => {
       const qw = (panelW - 20) / 5;
@@ -550,7 +817,6 @@ export class CoinRunnerScene extends Phaser.Scene {
       this.betPanel.add(qBtn);
     });
 
-    // START button
     const startY = quickY + 40;
     this.playBtn = this.makeBtn(panelX + 20, startY, panelW - 40, 52, 'START', 0x00aa00, () => this.startRun(), '22px');
     this.betPanel.add(this.playBtn);
@@ -588,7 +854,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     import('../ui/RunnerSettingsPanel').then(({ RunnerSettingsPanel }) => {
       this.settingsPanel = new RunnerSettingsPanel(this, () => {
         this.settingsPanel = undefined;
-        // Restart scene when settings change
         this.scene.restart();
       });
     });
@@ -610,7 +875,6 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   // === INPUT ===
   private setupInput(): void {
-    // Touch: hold = jump higher
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => {
       if (p.y < this.groundY + 30) {
         if (this.phase === 'running' || this.phase === 'tutorial') this.startJump();
@@ -620,7 +884,6 @@ export class CoinRunnerScene extends Phaser.Scene {
       this.releaseJump();
     });
 
-    // Keyboard: SPACE hold for variable jump
     this.input.keyboard?.on('keydown-SPACE', () => {
       if (this.phase === 'running' || this.phase === 'tutorial') this.startJump();
       else if (this.phase === 'betting') this.startRun();
@@ -629,7 +892,6 @@ export class CoinRunnerScene extends Phaser.Scene {
       this.releaseJump();
     });
 
-    // UP arrow
     this.input.keyboard?.on('keydown-UP', () => {
       if (this.phase === 'running' || this.phase === 'tutorial') this.startJump();
     });
@@ -641,8 +903,10 @@ export class CoinRunnerScene extends Phaser.Scene {
   private startJump(): void {
     if (!this.isOnGround || this.isDead) return;
     this.isOnGround = false;
-    // Start with minimum jump force
-    this.velocityY = this.JUMP_FORCE * this.MIN_JUMP_FORCE_RATIO;
+    this.groundContactCount = 0;
+    // Min jump velocity (positive Y = up in Box2D Y-up)
+    const jumpVel = pxFrameToMs(Math.abs(this.JUMP_FORCE) * this.MIN_JUMP_FORCE_RATIO);
+    b2Body_SetLinearVelocity(this.runnerBodyId, new b2Vec2(0, jumpVel));
     this.jumpHeld = true;
     this.jumpHoldTime = 0;
     this.runner.setTexture('runner_jump');
@@ -660,16 +924,15 @@ export class CoinRunnerScene extends Phaser.Scene {
     }
     this.jumpHoldTime += delta;
     if (this.jumpHoldTime >= this.MAX_JUMP_HOLD) {
-      // Reached max hold time
       this.jumpHeld = false;
       return;
     }
-    // Apply additional upward force while holding (decreasing over time)
     const holdRatio = 1 - (this.jumpHoldTime / this.MAX_JUMP_HOLD);
-    const extraForce = this.JUMP_FORCE * (1 - this.MIN_JUMP_FORCE_RATIO) * holdRatio * (delta / this.MAX_JUMP_HOLD) * 3;
-    this.velocityY += extraForce;
-    // Clamp to max jump force
-    this.velocityY = Math.max(this.JUMP_FORCE, this.velocityY);
+    const extra = pxFrameToMs(Math.abs(this.JUMP_FORCE) * (1 - this.MIN_JUMP_FORCE_RATIO)
+      * holdRatio * (delta / this.MAX_JUMP_HOLD) * 3);
+    const vel = b2Body_GetLinearVelocity(this.runnerBodyId);
+    const maxVel = pxFrameToMs(Math.abs(this.JUMP_FORCE));
+    b2Body_SetLinearVelocity(this.runnerBodyId, new b2Vec2(0, Math.min(vel.y + extra, maxVel)));
   }
 
   // === GAME FLOW ===
@@ -688,7 +951,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.setCashoutEnabled(true);
     SoundFX.playFlyAway();
 
-    // Start with tutorial phase
     this.phase = 'tutorial';
     this.worldSpeed = this.BASE_SPEED;
     this.showTutorial();
@@ -697,7 +959,6 @@ export class CoinRunnerScene extends Phaser.Scene {
   private showTutorial(): void {
     const w = GAME_CONFIG.WIDTH;
 
-    // Tutorial message 1
     const t1 = this.add.text(w / 2, this.groundY - 110, 'SEGURE para pular\nmais ALTO!', {
       fontSize: '20px', fontFamily: 'Arial', color: '#ffffff', fontStyle: 'bold',
       align: 'center', backgroundColor: '#000000aa',
@@ -705,8 +966,7 @@ export class CoinRunnerScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(200);
     this.tutorialTexts.push(t1);
 
-    // Bouncing arrow
-    this.tutorialArrow = this.add.text(this.runnerBaseX, this.groundY - 50, '⬆', {
+    this.tutorialArrow = this.add.text(this.runnerBaseX, this.groundY - 50, '\u2B06', {
       fontSize: '28px',
     }).setOrigin(0.5).setDepth(200);
     this.tweens.add({ targets: this.tutorialArrow, y: this.groundY - 65, duration: 400, yoyo: true, repeat: -1 });
@@ -715,7 +975,6 @@ export class CoinRunnerScene extends Phaser.Scene {
   }
 
   private endTutorial(): void {
-    // Clear tutorial UI
     this.tutorialTexts.forEach(t => t.destroy());
     this.tutorialTexts = [];
     this.tutorialArrow?.destroy();
@@ -724,7 +983,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.phase = 'running';
     this.statusText.setText('Cuidado com os obstaculos! Cash out a qualquer hora!');
 
-    // Flash warning
     const warn = this.add.text(GAME_CONFIG.WIDTH / 2, this.groundY - 100, 'PERIGO! Obstaculos!', {
       fontSize: '22px', fontFamily: 'Arial', color: '#ff4757', fontStyle: 'bold',
       backgroundColor: '#000000cc', padding: { x: 15, y: 8 },
@@ -744,21 +1002,18 @@ export class CoinRunnerScene extends Phaser.Scene {
 
     this.phase = 'cashout_anim';
     this.setCashoutEnabled(false);
-    this.worldSpeed = 0; // Stop scrolling!
+    this.worldSpeed = 0;
 
-    // Clear tutorial if still showing
     this.tutorialTexts.forEach(t => t.destroy());
     this.tutorialTexts = [];
     this.tutorialArrow?.destroy();
 
-    // Spawn a pipe at runner's position
     const pipeX = this.runner.x + 60;
     this.cashoutPipe = this.add.image(pipeX, this.groundY, 'pipe_large')
       .setScale(1.5)
       .setOrigin(0.5, 1)
       .setDepth(8);
 
-    // Pipe rises from ground
     this.cashoutPipe.y = this.groundY + 80;
     this.tweens.add({
       targets: this.cashoutPipe,
@@ -766,14 +1021,12 @@ export class CoinRunnerScene extends Phaser.Scene {
       duration: 500,
       ease: 'Back.easeOut',
       onComplete: () => {
-        // Runner walks to pipe
         this.tweens.add({
           targets: this.runner,
           x: pipeX,
           duration: 600,
           ease: 'Linear',
           onComplete: () => {
-            // Runner sinks into pipe
             SoundFX.playBetTick();
             this.tweens.add({
               targets: this.runner,
@@ -811,7 +1064,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.balanceText.setText(`${GameState.balance.toFixed(0)} coins`);
     this.cashoutBtn.setVisible(false);
 
-    // Prize display
     const resultContainer = this.add.container(0, 0).setDepth(300);
 
     const overlay = this.add.graphics();
@@ -836,7 +1088,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     }).setOrigin(0.5);
     resultContainer.add(multText);
 
-    // Animate prize
     this.tweens.add({
       targets: amtText,
       scaleX: 1, scaleY: 1,
@@ -844,10 +1095,9 @@ export class CoinRunnerScene extends Phaser.Scene {
       ease: 'Back.easeOut',
     });
 
-    // Coin burst particles
     for (let i = 0; i < 15; i++) {
       const coin = this.add.image(w / 2, prizeY, 'coin')
-        .setScale(1.5);
+        .setScale(0.35);
       resultContainer.add(coin);
       this.tweens.add({
         targets: coin,
@@ -864,7 +1114,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.multiplierText.setColor('#00ff00');
     this.phase = 'result';
 
-    // "APOSTAR NOVAMENTE" button after a short delay
     this.time.delayedCall(2000, () => {
       const replayBtn = this.makeBtn(w / 2 - 100, prizeY + 100, 200, 50, 'JOGAR NOVAMENTE', 0x00aa00, () => {
         resultContainer.destroy();
@@ -876,6 +1125,16 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   private die(): void {
     if (this.isDead) return;
+    const rPos = b2Body_GetPosition(this.runnerBodyId);
+    const rVel = b2Body_GetLinearVelocity(this.runnerBodyId);
+    console.error('DIE called!', {
+      spriteY: this.runner.y, groundY: this.groundY, phase: this.phase,
+      groundContacts: this.groundContactCount, frame: this.debugFrameCount,
+      b2dPos: { x: mpx(rPos.x).toFixed(1), y: (-mpx(rPos.y)).toFixed(1) },
+      b2dVel: { x: rVel.x.toFixed(3), y: rVel.y.toFixed(3) },
+    });
+    console.log('[DIE] Last 30 telemetry frames:', JSON.stringify(this.telemetryHistory.slice(-30)));
+    console.trace('die() stacktrace');
     this.isDead = true;
     this.worldSpeed = 0;
 
@@ -885,7 +1144,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.cashoutBtn.setVisible(false);
     this.setCashoutEnabled(false);
 
-    // Clear tutorial
     this.tutorialTexts.forEach(t => t.destroy());
     this.tutorialArrow?.destroy();
 
@@ -945,7 +1203,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     }).setOrigin(0.5);
     resultContainer.add(infoText);
 
-    // Replay button
     this.time.delayedCall(1500, () => {
       const replayBtn = this.makeBtn(w / 2 - 100, prizeY + 100, 200, 50, 'JOGAR NOVAMENTE', 0x00aa00, () => {
         resultContainer.destroy();
@@ -980,11 +1237,117 @@ export class CoinRunnerScene extends Phaser.Scene {
       }
     }
 
+    // === BOX2D PHYSICS ===
+    this.debugFrameCount++;
+
+    // Collect telemetry every frame into history
+    {
+      const rPos = b2Body_GetPosition(this.runnerBodyId);
+      const rVel = b2Body_GetLinearVelocity(this.runnerBodyId);
+      const entry = {
+        f: this.debugFrameCount,
+        t: (performance.now() / 1000).toFixed(2),
+        phase: this.phase,
+        rPx: { x: +mpx(rPos.x).toFixed(1), y: +(-mpx(rPos.y)).toFixed(1) },
+        rVel: { x: +rVel.x.toFixed(3), y: +rVel.y.toFixed(3) },
+        sXY: { x: +this.runner.x.toFixed(1), y: +this.runner.y.toFixed(1) },
+        onGnd: this.isOnGround,
+        gndCt: this.groundContactCount,
+        spd: +this.worldSpeed.toFixed(2),
+        scroll: +this.scrollOffset.toFixed(0),
+        segs: this.segments.length,
+        bodies: this.segments.reduce((s, seg) => s + seg.bodyIds.length, 0),
+      };
+      this.telemetryHistory.push(entry);
+      // Keep last 600 frames (~10s)
+      if (this.telemetryHistory.length > 600) this.telemetryHistory.shift();
+      // Expose globally for console access
+      (window as any).__telemetry = this.telemetryHistory;
+
+      // Log every 30 frames
+      if (this.debugFrameCount % 30 === 1) {
+        console.log(`[TEL] f=${entry.f} ${entry.phase} pos=(${entry.rPx.x},${entry.rPx.y}) vel=(${entry.rVel.x},${entry.rVel.y}) gnd=${entry.onGnd}/${entry.gndCt} spd=${entry.spd} scroll=${entry.scroll} segs=${entry.segs} bodies=${entry.bodies}`);
+      }
+    }
+
+    // Update debug overlay
+    if (this.debugText) {
+      const rPos = b2Body_GetPosition(this.runnerBodyId);
+      const rVel = b2Body_GetLinearVelocity(this.runnerBodyId);
+      this.debugText.setText([
+        `phase: ${this.phase}`,
+        `runner sprite: (${this.runner.x.toFixed(0)}, ${this.runner.y.toFixed(0)})`,
+        `runner b2d: (${mpx(rPos.x).toFixed(0)}, ${(-mpx(rPos.y)).toFixed(0)})`,
+        `runner vel: (${rVel.x.toFixed(2)}, ${rVel.y.toFixed(2)})`,
+        `onGround: ${this.isOnGround} contacts: ${this.groundContactCount}`,
+        `worldSpeed: ${this.worldSpeed.toFixed(2)}`,
+        `segments: ${this.segments.length} bodies: ${this.segments.reduce((s, seg) => s + seg.bodyIds.length, 0)}`,
+        `scroll: ${this.scrollOffset.toFixed(0)} dist: ${this.distanceTraveled.toFixed(0)}`,
+      ].join('\n'));
+    }
+
+    // 1. Jump hold (extra force while button held)
+    this.updateJumpHold(delta);
+
+    // 2. Lock runner X velocity + soft cap max jump height
+    const vel = b2Body_GetLinearVelocity(this.runnerBodyId);
+    const rPos = b2Body_GetPosition(this.runnerBodyId);
+    const runnerPhaserY = -mpx(rPos.y);
+    // Soft zone starts 200px above ground, hard limit at 280px above ground
+    const SOFT_CEILING_Y = this.groundY - 200; // y=350 — start damping
+    const HARD_CEILING_Y = this.groundY - 280; // y=270 — full stop
+    let clampedVelY = vel.y;
+    // On first few frames, suppress any upward bounce from initial body placement
+    if (this.debugFrameCount <= 5 && vel.y > 0 && !this.jumpHeld) {
+      clampedVelY = 0;
+    }
+    // Gradually reduce upward velocity as runner approaches ceiling
+    if (runnerPhaserY < SOFT_CEILING_Y && clampedVelY > 0) {
+      // How deep into the soft zone (0 = just entered, 1 = at hard limit)
+      const t = Math.min(1, (SOFT_CEILING_Y - runnerPhaserY) / (SOFT_CEILING_Y - HARD_CEILING_Y));
+      // Quadratic falloff: feels like increasing air resistance
+      const damping = 1 - t * t;
+      clampedVelY *= damping;
+      if (t >= 1) this.jumpHeld = false;
+    }
+    b2Body_SetLinearVelocity(this.runnerBodyId, new b2Vec2(0, clampedVelY));
+
+    // 3. Set kinematic velocities for world scroll
+    this.updateKinematicVelocities();
+
+    // 4. Step physics
+    WorldStep({ worldId: this.worldId, deltaTime: delta / 1000 });
+
+    // 5. Sync sprites from bodies
+    UpdateWorldSprites(this.worldId);
+
+    // 5b. Manual runner sprite sync (body center → sprite feet)
+    // BodyToSprite would place sprite center at body center, but we want feet at body bottom
+    {
+      const rPos = b2Body_GetPosition(this.runnerBodyId);
+      this.runner.x = mpx(rPos.x);
+      // body center in Phaser Y = -mpx(rPos.y)
+      // body bottom in Phaser Y = body_center + half_height = -mpx(rPos.y) + 12
+      this.runner.y = -mpx(rPos.y) + 12; // feet at body bottom
+    }
+
+    // 6. Process contacts (replaces ALL manual AABB checks)
+    this.processContacts();
+
+    // Coyote time: delay losing ground state to bridge seams between segments
+    if (this.coyoteFrames > 0) {
+      this.coyoteFrames--;
+      if (this.coyoteFrames <= 0 && this.groundContactCount <= 0) {
+        this.isOnGround = false;
+      }
+    }
+
+    // Track scroll offset for segment generation
     const speed = this.worldSpeed * dt;
     this.scrollOffset += speed;
     this.distanceTraveled += speed;
 
-    // Multiplier: coin-based only - grows when collecting coins
+    // Multiplier: coin-based only
     this.currentMultiplier = Math.floor(this.currentMultiplier * 100) / 100;
 
     let mColor = '#ffd700';
@@ -995,25 +1358,22 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.multiplierText.setColor(mColor);
     this.coinsText.setText(`Moedas: ${this.coinsCollected}`);
 
-    // Check challenge target reached
+    // Challenge target check
     if (this.challengeActive && this.currentMultiplier >= this.challengeTarget) {
       this.challengeActive = false;
       this.challengesCompleted++;
-      // Coins now give 0.01x * challengeTarget (e.g. target 5x → coins give 0.05x each)
       this.coinMultiplierBonus = this.challengeTarget;
       this.setCashoutEnabled(true);
       if (this.challengeGoalText) {
         this.challengeGoalText.setText('META ATINGIDA!').setColor('#00ff00');
         this.tweens.add({ targets: this.challengeGoalText, alpha: 0, duration: 3000, onComplete: () => this.challengeGoalText?.destroy() });
       }
-      // Flash celebration with bonus info
       const w = GAME_CONFIG.WIDTH;
       const celebrate = this.add.text(w / 2, this.groundY - 100, 'META ATINGIDA!', {
         fontSize: '24px', fontFamily: 'Arial', color: '#00ff00', fontStyle: 'bold',
         backgroundColor: '#000000cc', padding: { x: 15, y: 8 },
       }).setOrigin(0.5).setDepth(200);
       this.tweens.add({ targets: celebrate, alpha: 0, y: celebrate.y - 50, duration: 2000, onComplete: () => celebrate.destroy() });
-      // Show bonus info
       const bonusInfo = this.add.text(w / 2, this.groundY - 60, `Moedas agora valem ${(RunnerSettings.multiplierPerCoin * this.coinMultiplierBonus).toFixed(2)}x!`, {
         fontSize: '16px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
         backgroundColor: '#000000cc', padding: { x: 10, y: 6 },
@@ -1022,282 +1382,27 @@ export class CoinRunnerScene extends Phaser.Scene {
       SoundFX.playCashOut();
     }
 
-    // Update challenge goal display
     if (this.challengeActive && this.challengeGoalText) {
       const progress = Math.min(100, (this.currentMultiplier / this.challengeTarget) * 100);
       this.challengeGoalText.setText(`META: ${this.challengeTarget}x (${progress.toFixed(0)}%)`);
     }
 
-    // === PHYSICS ===
-    // Variable jump: apply extra force while holding
-    this.updateJumpHold(delta);
-
-    // Gravity
-    if (!this.isOnGround) {
-      this.velocityY += this.GRAVITY * dt;
-      this.runner.y += this.velocityY * dt;
-    }
-
-    // Ground and platform collision
-    let landed = false;
-    const runnerFeetY = this.runner.y;
-    const runnerX = this.runner.x;
-
-    // Landing tolerance scales with fall speed to prevent passing through ground
-    const landTolerance = Math.max(14, Math.abs(this.velocityY * dt) + 6);
-
-    // Check ground tiles
-    for (const seg of this.segments) {
-      for (const g of seg.grounds) {
-        if (!g.active) continue;
-        const gLeft = g.x;
-        const gRight = g.x + 32;
-        const gTop = g.y;
-
-        if (runnerX >= gLeft - 5 && runnerX <= gRight + 5) {
-          if (this.velocityY >= 0 && runnerFeetY >= gTop - 4 && runnerFeetY <= gTop + landTolerance) {
-            this.runner.y = gTop;
-            this.land();
-            landed = true;
-          }
-        }
-      }
-
-      // Check platforms
-      for (const p of seg.platforms) {
-        if (!p.sprite.active) continue;
-        if (runnerX >= p.sprite.x - 5 && runnerX <= p.sprite.x + p.w + 5) {
-          if (this.velocityY >= 0 && runnerFeetY >= p.y - 4 && runnerFeetY <= p.y + landTolerance) {
-            this.runner.y = p.y;
-            this.land();
-            landed = true;
-          }
-        }
-      }
-    }
-
-    // Fall death
+    // Fall death (check runner Y in pixels after sprite sync)
     if (this.runner.y > GAME_CONFIG.HEIGHT + 20) {
       this.die();
       return;
     }
 
-    // If on ground but no ground beneath → start falling
-    if (this.isOnGround && !landed) {
-      let hasSupport = false;
-      for (const seg of this.segments) {
-        for (const g of seg.grounds) {
-          if (!g.active) continue;
-          if (runnerX >= g.x - 5 && runnerX <= g.x + 37 && Math.abs(runnerFeetY - g.y) < 5) {
-            hasSupport = true;
-            break;
-          }
-        }
-        if (hasSupport) break;
-        for (const p of seg.platforms) {
-          if (!p.sprite.active) continue;
-          if (runnerX >= p.sprite.x - 5 && runnerX <= p.sprite.x + p.w + 5 && Math.abs(runnerFeetY - p.y) < 5) {
-            hasSupport = true;
-            break;
-          }
-        }
-        if (hasSupport) break;
-      }
-      if (!hasSupport) {
-        this.isOnGround = false;
-        this.velocityY = 0;
-      }
-    }
-
-    // === COLLISIONS ===
-    for (const seg of this.segments) {
-      // Coins
-      for (let i = seg.coins.length - 1; i >= 0; i--) {
-        const cd = seg.coins[i];
-        if (!cd.sprite.active) continue;
-        if (this.overlap(this.runner, cd.sprite, 22, 28)) {
-          this.coinsCollected++;
-          if (cd.tutorial) {
-            // Tutorial coin - small value (0.001x)
-            const tutValue = 0.001;
-            this.currentMultiplier += tutValue;
-            const label = this.add.text(cd.sprite.x, cd.sprite.y - 15, `+${tutValue.toFixed(3)}x`, {
-              fontSize: '10px', fontFamily: 'Arial', color: '#88ccdd',
-            }).setOrigin(0.5).setDepth(200);
-            this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
-          } else if (cd.premium) {
-            // Premium coin (also boosted by challenge bonus)
-            const premValue = RunnerSettings.premiumCoinValue * this.coinMultiplierBonus;
-            this.currentMultiplier += premValue;
-            const label = this.add.text(cd.sprite.x, cd.sprite.y - 20, `+${premValue.toFixed(2)}x`, {
-              fontSize: '18px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
-            }).setOrigin(0.5).setDepth(200);
-            this.tweens.add({ targets: label, y: label.y - 50, alpha: 0, duration: 800, onComplete: () => label.destroy() });
-          } else {
-            // Normal coin (boosted by challenge bonus)
-            const coinValue = RunnerSettings.multiplierPerCoin * this.coinMultiplierBonus;
-            this.currentMultiplier += coinValue;
-            const label = this.add.text(cd.sprite.x, cd.sprite.y - 15, `+${coinValue.toFixed(2)}x`, {
-              fontSize: '12px', fontFamily: 'Arial', color: this.coinMultiplierBonus > 1 ? '#ff00ff' : '#ffd700',
-            }).setOrigin(0.5).setDepth(200);
-            this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
-          }
-          this.tweens.add({ targets: cd.sprite, y: cd.sprite.y - 30, alpha: 0, scaleX: 0, duration: 300, onComplete: () => cd.sprite.destroy() });
-          seg.coins.splice(i, 1);
-          SoundFX.playCashOut();
-        }
-      }
-
-      // Enemies
-      for (const e of seg.enemies) {
-        if (e.dead || !e.sprite.active) continue;
-        if (this.overlap(this.runner, e.sprite, 18, 22)) {
-          const canStomp = e.type !== 'enemy_spiny'; // spiny can't be stomped
-          if (canStomp && this.velocityY > 0 && this.runner.y < e.sprite.y - 8) {
-            // Stomp!
-            e.dead = true;
-            this.tweens.add({ targets: e.sprite, scaleY: 0.2, alpha: 0, duration: 200, onComplete: () => e.sprite.destroy() });
-            this.velocityY = -7;
-            this.isOnGround = false;
-            this.coinsCollected += 2;
-            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 2 * this.coinMultiplierBonus;
-            SoundFX.playBetTick();
-          } else {
-            this.die();
-            return;
-          }
-        }
-      }
-
-      // Pipes (collision)
-      for (const p of seg.pipes) {
-        if (!p.sprite.active) continue;
-        // Side collision with pipe
-        const ps = p.sprite;
-        const pw = 32 * 1.2;
-        const ph = 40 * 1.2;
-        const pLeft = ps.x - pw / 2;
-        const pRight = ps.x + pw / 2;
-        const pTop = ps.y;
-
-        if (runnerX + 10 > pLeft && runnerX - 10 < pRight) {
-          if (runnerFeetY > pTop + 5 && runnerFeetY < pTop + ph) {
-            // Side hit = die
-            this.die();
-            return;
-          }
-          if (this.velocityY >= 0 && runnerFeetY >= pTop - 2 && runnerFeetY <= pTop + 8) {
-            // Land on top
-            this.runner.y = pTop;
-            this.land();
-          }
-        }
-
-        // Piranha collision
-        if (p.piranha?.active && this.overlap(this.runner, p.piranha, 15, 18)) {
-          this.die();
-          return;
-        }
-      }
-
-      // Question blocks (hit from below)
-      for (const q of seg.qblocks) {
-        if (q.hit || !q.sprite.active) continue;
-        if (this.overlap(this.runner, q.sprite, 18, 22) && this.velocityY < 0) {
-          q.hit = true;
-          this.tweens.add({ targets: q.sprite, y: q.sprite.y - 8, duration: 100, yoyo: true });
-          q.sprite.setTint(0x888888);
-          this.velocityY = 2;
-
-          if (q.magic) {
-            // MAGIC BLOCK: freeze and show challenge
-            SoundFX.playBetTick();
-            this.showMagicChallenge();
-          } else {
-            // Normal block: coins + multiplier
-            this.coinsCollected += 3;
-            this.currentMultiplier += RunnerSettings.multiplierPerCoin * 3 * this.coinMultiplierBonus;
-            SoundFX.playCashOut();
-            const burst = this.add.image(q.sprite.x, q.sprite.y - 15, 'coin').setScale(1.5);
-            this.tweens.add({ targets: burst, y: burst.y - 40, alpha: 0, duration: 500, onComplete: () => burst.destroy() });
-          }
-        }
-      }
-
-      // Mushrooms
-      for (let i = seg.mushrooms.length - 1; i >= 0; i--) {
-        const m = seg.mushrooms[i];
-        if (!m.active) continue;
-        if (this.overlap(this.runner, m, 20, 22)) {
-          this.coinsCollected += 5;
-          this.currentMultiplier += RunnerSettings.multiplierPerCoin * 5 * this.coinMultiplierBonus;
-          this.tweens.add({ targets: m, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => m.destroy() });
-          seg.mushrooms.splice(i, 1);
-          this.tweens.add({ targets: this.runner, alpha: 0.5, duration: 100, yoyo: true, repeat: 5 });
-          SoundFX.playCashOut();
-        }
-      }
-
-      // Poison mushrooms - lose half of gained multiplier!
-      for (let i = seg.poisonMushrooms.length - 1; i >= 0; i--) {
-        const pm = seg.poisonMushrooms[i];
-        if (!pm.active) continue;
-        if (this.overlap(this.runner, pm, 20, 22)) {
-          const gained = this.currentMultiplier - 1;
-          const loss = gained / 2;
-          this.currentMultiplier = Math.max(1, this.currentMultiplier - loss);
-          // Visual feedback
-          const lossLabel = this.add.text(pm.x, pm.y - 20, `-${loss.toFixed(2)}x`, {
-            fontSize: '18px', fontFamily: 'Arial', color: '#ff0000', fontStyle: 'bold',
-          }).setOrigin(0.5).setDepth(200);
-          this.tweens.add({ targets: lossLabel, y: lossLabel.y - 50, alpha: 0, duration: 1000, onComplete: () => lossLabel.destroy() });
-          // Poison effect on runner
-          this.tweens.add({ targets: this.runner, tint: 0x6600aa, duration: 100, yoyo: true, repeat: 5 });
-          this.tweens.add({ targets: pm, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => pm.destroy() });
-          seg.poisonMushrooms.splice(i, 1);
-          SoundFX.playExplosion();
-          this.statusText.setText('Cogumelo podre! Perdeu metade do mult.!');
-        }
-      }
-    }
-
-    // Bullet Bills (check collision)
-    for (let i = this.bullets.length - 1; i >= 0; i--) {
-      const b = this.bullets[i];
-      if (b.dead || !b.sprite.active) continue;
-      b.sprite.x -= (speed + 3) * dt; // bullets move faster
-      if (b.sprite.x < -30) {
-        b.sprite.destroy();
-        this.bullets.splice(i, 1);
-        continue;
-      }
-      if (this.overlap(this.runner, b.sprite, 18, 16)) {
-        this.die();
-        return;
-      }
-    }
-
-    // Spawn Bullet Bills periodically in running phase
+    // Bullet Bill spawning
     if (this.phase === 'running' && this.segmentCount >= 10) {
       this.bulletTimer += delta;
       if (this.bulletTimer > RunnerSettings.bulletInterval - Math.min(this.segmentCount * 100, 3000)) {
         this.bulletTimer = 0;
-        const by = this.groundY - Phaser.Math.Between(30, 80);
-        const bullet = this.add.image(GAME_CONFIG.WIDTH + 20, by, 'enemy_bullet')
-          .setScale(1.5).setOrigin(0.5, 1);
-        this.bullets.push({ sprite: bullet, type: 'enemy_bullet', baseY: by, dead: false });
-        // Warning flash
-        const warn = this.add.text(GAME_CONFIG.WIDTH - 30, by - 10, '!!', {
-          fontSize: '16px', fontFamily: 'Arial', color: '#ff0000', fontStyle: 'bold',
-        }).setDepth(200);
-        this.tweens.add({ targets: warn, alpha: 0, duration: 500, onComplete: () => warn.destroy() });
+        this.spawnBullet();
       }
     }
 
-    // === SCROLL WORLD ===
-    this.scrollWorld(speed);
-
-    // Run animation - cycle walk frames (never flipX, always face right)
+    // Run animation
     if (this.isOnGround) {
       this.runTimer += delta;
       if (this.runTimer > 120) {
@@ -1312,6 +1417,349 @@ export class CoinRunnerScene extends Phaser.Scene {
     while (this.nextSegmentX - this.scrollOffset < GAME_CONFIG.WIDTH + 300) {
       this.generateSegment();
     }
+
+    // Cleanup offscreen segments
+    this.cleanupOffscreenSegments();
+
+    // Manual scroll for ground tile sprites (not physics-linked)
+    for (const seg of this.segments) {
+      for (const g of seg.grounds) {
+        g.x -= speed;
+      }
+    }
+
+    // Cloud parallax (no physics, manual scroll)
+    for (const cloud of this.clouds) {
+      cloud.x -= speed * 0.3;
+      if (cloud.x < -70) {
+        cloud.x = GAME_CONFIG.WIDTH + 70;
+        cloud.y = Phaser.Math.Between(30, 150);
+      }
+    }
+  }
+
+  // === BOX2D KINEMATIC VELOCITIES ===
+  private updateKinematicVelocities(): void {
+    const vx = -pxFrameToMs(this.worldSpeed);
+    for (const seg of this.segments) {
+      for (const bid of seg.bodyIds) {
+        b2Body_SetLinearVelocity(bid, new b2Vec2(vx, 0));
+      }
+    }
+    // Bullets move faster
+    for (const b of this.bullets) {
+      if (b.bodyId) {
+        b2Body_SetLinearVelocity(b.bodyId, new b2Vec2(vx - pxFrameToMs(3), 0));
+      }
+    }
+  }
+
+  // === BOX2D CONTACT PROCESSING ===
+  private processContacts(): void {
+    const contacts = b2World_GetContactEvents(this.worldId);
+
+    if (contacts.beginCount > 0 || contacts.endCount > 0) {
+      console.log(`[CONTACTS] f=${this.debugFrameCount} begin=${contacts.beginCount} end=${contacts.endCount} hit=${contacts.hitCount}`);
+    }
+
+    // Begin contacts (solid collisions)
+    for (let i = 0; i < contacts.beginCount; i++) {
+      const evt = contacts.beginEvents[i];
+      const bodyA = b2Shape_GetBody(evt.shapeIdA);
+      const bodyB = b2Shape_GetBody(evt.shapeIdB);
+      const udA = b2Body_GetUserData(bodyA) as PhysicsUserData | null;
+      const udB = b2Body_GetUserData(bodyB) as PhysicsUserData | null;
+      console.log(`[CONTACT BEGIN] A=${udA?.kind ?? 'null'} B=${udB?.kind ?? 'null'}`);
+      if (!udA || !udB) continue;
+
+      const playerUD = udA.kind === 'player' ? udA : udB.kind === 'player' ? udB : null;
+      const otherUD = playerUD === udA ? udB : playerUD === udB ? udA : null;
+      if (!playerUD || !otherUD) continue;
+
+      switch (otherUD.kind) {
+        case 'ground':
+        case 'pipe_top':
+          this.groundContactCount++;
+          this.land();
+          break;
+        case 'platform':
+          this.groundContactCount++;
+          this.land();
+          break;
+        case 'enemy':
+          this.handleEnemyContact(otherUD.ref as EnemyData);
+          break;
+        case 'pipe_body':
+        case 'piranha':
+        case 'bullet':
+          this.die();
+          return;
+      }
+    }
+
+    // End contacts (leaving ground)
+    for (let i = 0; i < contacts.endCount; i++) {
+      const evt = contacts.endEvents[i];
+      const bodyA = b2Shape_GetBody(evt.shapeIdA);
+      const bodyB = b2Shape_GetBody(evt.shapeIdB);
+      const udA = b2Body_GetUserData(bodyA) as PhysicsUserData | null;
+      const udB = b2Body_GetUserData(bodyB) as PhysicsUserData | null;
+      if (!udA || !udB) continue;
+
+      const hasPlayer = udA.kind === 'player' || udB.kind === 'player';
+      const otherKind = udA.kind === 'player' ? udB.kind : udA.kind;
+      if (hasPlayer && (otherKind === 'ground' || otherKind === 'platform' || otherKind === 'pipe_top')) {
+        this.groundContactCount--;
+        if (this.groundContactCount <= 0) {
+          this.groundContactCount = 0;
+          // Start coyote time instead of immediately leaving ground
+          this.coyoteFrames = this.COYOTE_MAX;
+        }
+      }
+    }
+
+    // Sensor events (coins, mushrooms, qblocks)
+    const sensors = b2World_GetSensorEvents(this.worldId);
+
+    if (sensors.beginCount > 0) {
+      console.log(`[SENSORS] f=${this.debugFrameCount} begin=${sensors.beginCount} end=${sensors.endCount}`);
+    }
+
+    for (let i = 0; i < sensors.beginCount; i++) {
+      const evt = sensors.beginEvents[i];
+      const sensorBody = b2Shape_GetBody(evt.sensorShapeId);
+      const visitorBody = b2Shape_GetBody(evt.visitorShapeId);
+      const sensorUD = b2Body_GetUserData(sensorBody) as PhysicsUserData | null;
+      const visitorUD = b2Body_GetUserData(visitorBody) as PhysicsUserData | null;
+      if (!sensorUD || !visitorUD) continue;
+
+      // One must be player
+      const isPlayerVisitor = visitorUD.kind === 'player';
+      const isPlayerSensor = sensorUD.kind === 'player';
+      if (!isPlayerVisitor && !isPlayerSensor) continue;
+
+      const itemUD = isPlayerVisitor ? sensorUD : visitorUD;
+
+      switch (itemUD.kind) {
+        case 'coin':
+          this.collectCoin(itemUD.ref as CoinData);
+          break;
+        case 'qblock':
+          this.hitQBlock(itemUD.ref);
+          break;
+        case 'mushroom':
+          this.collectMushroom(itemUD.ref as Phaser.GameObjects.Image);
+          break;
+        case 'poison':
+          this.collectPoisonMushroom(itemUD.ref as Phaser.GameObjects.Image);
+          break;
+      }
+    }
+  }
+
+  private handleEnemyContact(enemy: EnemyData): void {
+    if (enemy.dead) return;
+    const canStomp = enemy.type !== 'enemy_spiny';
+    const playerVel = b2Body_GetLinearVelocity(this.runnerBodyId);
+
+    // In Y-up coords: vel.y < 0 = falling down
+    if (canStomp && playerVel.y < -0.5) {
+      // Stomp!
+      enemy.dead = true;
+      this.tweens.add({ targets: enemy.sprite, scaleY: 0.2, alpha: 0, duration: 200, onComplete: () => enemy.sprite.destroy() });
+      // Bounce up
+      const bounceVel = pxFrameToMs(7);
+      b2Body_SetLinearVelocity(this.runnerBodyId, new b2Vec2(0, bounceVel));
+      this.isOnGround = false;
+      this.groundContactCount = 0;
+      this.coinsCollected += 2;
+      this.currentMultiplier += RunnerSettings.multiplierPerCoin * 2 * this.coinMultiplierBonus;
+      SoundFX.playBetTick();
+    } else {
+      this.die();
+    }
+  }
+
+  private collectCoin(coinData: CoinData): void {
+    if (!coinData.sprite.active) return;
+    this.coinsCollected++;
+
+    if (coinData.tutorial) {
+      const tutValue = 0.001;
+      this.currentMultiplier += tutValue;
+      const label = this.add.text(coinData.sprite.x, coinData.sprite.y - 15, `+${tutValue.toFixed(3)}x`, {
+        fontSize: '10px', fontFamily: 'Arial', color: '#88ccdd',
+      }).setOrigin(0.5).setDepth(200);
+      this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
+    } else if (coinData.premium) {
+      const premValue = RunnerSettings.premiumCoinValue * this.coinMultiplierBonus;
+      this.currentMultiplier += premValue;
+      const label = this.add.text(coinData.sprite.x, coinData.sprite.y - 20, `+${premValue.toFixed(2)}x`, {
+        fontSize: '18px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
+      }).setOrigin(0.5).setDepth(200);
+      this.tweens.add({ targets: label, y: label.y - 50, alpha: 0, duration: 800, onComplete: () => label.destroy() });
+    } else {
+      const coinValue = RunnerSettings.multiplierPerCoin * this.coinMultiplierBonus;
+      this.currentMultiplier += coinValue;
+      const label = this.add.text(coinData.sprite.x, coinData.sprite.y - 15, `+${coinValue.toFixed(2)}x`, {
+        fontSize: '12px', fontFamily: 'Arial', color: this.coinMultiplierBonus > 1 ? '#ff00ff' : '#ffd700',
+      }).setOrigin(0.5).setDepth(200);
+      this.tweens.add({ targets: label, y: label.y - 35, alpha: 0, duration: 600, onComplete: () => label.destroy() });
+    }
+
+    this.tweens.add({ targets: coinData.sprite, y: coinData.sprite.y - 30, alpha: 0, scaleX: 0, duration: 300, onComplete: () => {
+      if (coinData.bodyId) {
+        RemoveSpriteFromWorld(this.worldId, coinData.sprite, true);
+      }
+      coinData.sprite.destroy();
+    }});
+    SoundFX.playCashOut();
+  }
+
+  private hitQBlock(qData: any): void {
+    if (qData.hit || !qData.sprite.active) return;
+    // Only activate from below (player moving up)
+    const playerVel = b2Body_GetLinearVelocity(this.runnerBodyId);
+    if (playerVel.y <= 0) return; // Must be moving up (positive Y in Box2D Y-up)
+
+    qData.hit = true;
+    this.tweens.add({ targets: qData.sprite, y: qData.sprite.y - 8, duration: 100, yoyo: true });
+    qData.sprite.setTint(0x888888);
+
+    // Bounce player down
+    b2Body_SetLinearVelocity(this.runnerBodyId, new b2Vec2(0, -pxFrameToMs(2)));
+
+    if (qData.magic) {
+      SoundFX.playBetTick();
+      this.showMagicChallenge();
+    } else {
+      this.coinsCollected += 3;
+      this.currentMultiplier += RunnerSettings.multiplierPerCoin * 3 * this.coinMultiplierBonus;
+      SoundFX.playCashOut();
+      const burst = this.add.image(qData.sprite.x, qData.sprite.y - 15, 'coin').setScale(0.35);
+      this.tweens.add({ targets: burst, y: burst.y - 40, alpha: 0, duration: 500, onComplete: () => burst.destroy() });
+    }
+  }
+
+  private collectMushroom(mush: Phaser.GameObjects.Image): void {
+    if (!mush.active) return;
+    this.coinsCollected += 5;
+    this.currentMultiplier += RunnerSettings.multiplierPerCoin * 5 * this.coinMultiplierBonus;
+    const mushWithBody = mush as Phaser.GameObjects.Image & { _bodyId?: any };
+    if (mushWithBody._bodyId) {
+      RemoveSpriteFromWorld(this.worldId, mush, true);
+    }
+    this.tweens.add({ targets: mush, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => mush.destroy() });
+    this.tweens.add({ targets: this.runner, alpha: 0.5, duration: 100, yoyo: true, repeat: 5 });
+    SoundFX.playCashOut();
+  }
+
+  private collectPoisonMushroom(poison: Phaser.GameObjects.Image): void {
+    if (!poison.active) return;
+    const gained = this.currentMultiplier - 1;
+    const loss = gained / 2;
+    this.currentMultiplier = Math.max(1, this.currentMultiplier - loss);
+
+    const lossLabel = this.add.text(poison.x, poison.y - 20, `-${loss.toFixed(2)}x`, {
+      fontSize: '18px', fontFamily: 'Arial', color: '#ff0000', fontStyle: 'bold',
+    }).setOrigin(0.5).setDepth(200);
+    this.tweens.add({ targets: lossLabel, y: lossLabel.y - 50, alpha: 0, duration: 1000, onComplete: () => lossLabel.destroy() });
+    this.tweens.add({ targets: this.runner, tint: 0x6600aa, duration: 100, yoyo: true, repeat: 5 });
+    const poisonWithBody = poison as Phaser.GameObjects.Image & { _bodyId?: any };
+    if (poisonWithBody._bodyId) {
+      RemoveSpriteFromWorld(this.worldId, poison, true);
+    }
+    this.tweens.add({ targets: poison, scaleX: 2, scaleY: 2, alpha: 0, duration: 300, onComplete: () => poison.destroy() });
+    SoundFX.playExplosion();
+    this.statusText.setText('Cogumelo podre! Perdeu metade do mult.!');
+  }
+
+  // === BULLET BILL ===
+  private spawnBullet(): void {
+    const by = this.groundY - Phaser.Math.Between(30, 80);
+    const bullet = this.add.image(GAME_CONFIG.WIDTH + 20, by, 'enemy_bullet')
+      .setScale(0.35).setOrigin(0.5, 1);
+    const enemyData: EnemyData = { sprite: bullet, type: 'enemy_bullet', baseY: by, dead: false };
+
+    // Create bullet body
+    const pos = toB2Pos(GAME_CONFIG.WIDTH + 20, by - 10);
+    const { bodyId } = CreateBoxPolygon({
+      worldId: this.worldId,
+      type: KINEMATIC,
+      position: new b2Vec2(pos.x, pos.y),
+      size: new b2Vec2(pxm(10), pxm(8)),
+      shapeDef: contactShapeDef(0, 0),
+      userData: { kind: 'bullet' } as PhysicsUserData,
+    });
+    enemyData.bodyId = bodyId;
+    AddSpriteToWorld(this.worldId, bullet, { bodyId });
+
+    this.bullets.push(enemyData);
+
+    // Warning flash
+    const warn = this.add.text(GAME_CONFIG.WIDTH - 30, by - 10, '!!', {
+      fontSize: '16px', fontFamily: 'Arial', color: '#ff0000', fontStyle: 'bold',
+    }).setDepth(200);
+    this.tweens.add({ targets: warn, alpha: 0, duration: 500, onComplete: () => warn.destroy() });
+  }
+
+  // === CLEANUP ===
+  private cleanupOffscreenSegments(): void {
+    for (let i = this.segments.length - 1; i >= 0; i--) {
+      const seg = this.segments[i];
+      let allOffscreen = true;
+      for (const g of seg.grounds) {
+        if (g.active && g.x > -100) { allOffscreen = false; break; }
+      }
+      if (!allOffscreen) {
+        // Also check platforms
+        for (const p of seg.platforms) {
+          if (p.sprite.active && p.sprite.x + p.w > -100) { allOffscreen = false; break; }
+        }
+      }
+      if (!allOffscreen) continue;
+
+      // First: remove all sprites from Box2D world map (prevents UpdateWorldSprites crash)
+      // RemoveSpriteFromWorld with destroyBody=true also destroys the body
+      const destroyedBodyIds = new Set<number>();
+      seg.platforms.forEach(p => { RemoveSpriteFromWorld(this.worldId, p.sprite, true); if (p.bodyId) destroyedBodyIds.add(p.bodyId); p.sprite.destroy(); });
+      seg.coins.forEach(c => { RemoveSpriteFromWorld(this.worldId, c.sprite, true); if (c.bodyId) destroyedBodyIds.add(c.bodyId); c.sprite.destroy(); });
+      seg.enemies.forEach(e => { RemoveSpriteFromWorld(this.worldId, e.sprite, true); if (e.bodyId) destroyedBodyIds.add(e.bodyId); e.sprite.destroy(); });
+      seg.pipes.forEach(p => {
+        RemoveSpriteFromWorld(this.worldId, p.sprite, true); if (p.bodyId) destroyedBodyIds.add(p.bodyId); p.sprite.destroy();
+        if (p.piranha) { RemoveSpriteFromWorld(this.worldId, p.piranha, true); if (p.piranhaBodyId) destroyedBodyIds.add(p.piranhaBodyId); p.piranha.destroy(); }
+        if (p.topBodyId) destroyedBodyIds.add(p.topBodyId);
+      });
+      seg.qblocks.forEach(q => { RemoveSpriteFromWorld(this.worldId, q.sprite, true); if (q.bodyId) destroyedBodyIds.add(q.bodyId); q.sprite.destroy(); });
+      seg.mushrooms.forEach(m => { RemoveSpriteFromWorld(this.worldId, m, true); if ((m as any)._bodyId) destroyedBodyIds.add((m as any)._bodyId); m.destroy(); });
+      seg.poisonMushrooms.forEach(m => { RemoveSpriteFromWorld(this.worldId, m, true); if ((m as any)._bodyId) destroyedBodyIds.add((m as any)._bodyId); m.destroy(); });
+      // Then: destroy remaining bodies (ground bodies not linked to sprites)
+      for (const bid of seg.bodyIds) {
+        if (!destroyedBodyIds.has(bid)) {
+          try { b2DestroyBody(bid); } catch (_e) { /* already destroyed */ }
+        }
+      }
+      seg.grounds.forEach(g => { g.destroy(); });
+      this.segments.splice(i, 1);
+    }
+
+    // Cleanup offscreen bullets
+    for (let i = this.bullets.length - 1; i >= 0; i--) {
+      const b = this.bullets[i];
+      if (b.sprite.x < -50) {
+        if (b.bodyId) {
+          RemoveSpriteFromWorld(this.worldId, b.sprite, true);
+        }
+        b.sprite.destroy();
+        this.bullets.splice(i, 1);
+      }
+    }
+  }
+
+  private land(): void {
+    this.isOnGround = true;
+    this.coyoteFrames = 0; // cancel any pending coyote countdown
+    this.runner.setTexture('runner');
   }
 
   // === MAGIC BLOCK CHALLENGE ===
@@ -1319,7 +1767,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.frozen = true;
     const w = GAME_CONFIG.WIDTH;
 
-    // Calculate challenge target: next round number above current multiplier
     let target: number;
     if (this.currentMultiplier < 2) target = 5;
     else if (this.currentMultiplier < 5) target = 10;
@@ -1330,13 +1777,11 @@ export class CoinRunnerScene extends Phaser.Scene {
     const container = this.add.container(0, 0).setDepth(400);
     this.challengeUI = container;
 
-    // Semi-transparent overlay
     const overlay = this.add.graphics();
     overlay.fillStyle(0x000000, 0.65);
     overlay.fillRect(0, 0, w, GAME_CONFIG.HEIGHT);
     container.add(overlay);
 
-    // Panel
     const panelW = w - 40;
     const panelH = 260;
     const px = 20;
@@ -1349,14 +1794,12 @@ export class CoinRunnerScene extends Phaser.Scene {
     panel.strokeRoundedRect(px, py, panelW, panelH, 16);
     container.add(panel);
 
-    // Star burst effect
-    const star = this.add.text(w / 2, py + 30, '★ DESAFIO ★', {
+    const star = this.add.text(w / 2, py + 30, '\u2605 DESAFIO \u2605', {
       fontSize: '22px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add(star);
     this.tweens.add({ targets: star, scaleX: 1.1, scaleY: 1.1, duration: 500, yoyo: true, repeat: -1 });
 
-    // Challenge description with reward info
     const rewardValue = (RunnerSettings.multiplierPerCoin * target).toFixed(2);
     const desc = this.add.text(w / 2, py + 60, `Alcance a meta e suas moedas\npassam a valer ${rewardValue}x cada!`, {
       fontSize: '13px', fontFamily: 'Arial', color: '#ccccff',
@@ -1364,24 +1807,20 @@ export class CoinRunnerScene extends Phaser.Scene {
     }).setOrigin(0.5);
     container.add(desc);
 
-    // Target display
     const targetText = this.add.text(w / 2, py + 110, `${target}x`, {
       fontSize: '48px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add(targetText);
     this.tweens.add({ targets: targetText, scaleX: 1.05, scaleY: 1.05, duration: 800, yoyo: true, repeat: -1 });
 
-    // Current vs target
-    const currentInfo = this.add.text(w / 2, py + 150, `Atual: ${this.currentMultiplier.toFixed(2)}x → Meta: ${target}x`, {
+    const currentInfo = this.add.text(w / 2, py + 150, `Atual: ${this.currentMultiplier.toFixed(2)}x \u2192 Meta: ${target}x`, {
       fontSize: '12px', fontFamily: 'Arial', color: '#aaaaaa',
     }).setOrigin(0.5);
     container.add(currentInfo);
 
-    // Buttons
     const btnW = (panelW - 30) / 2;
     const btnY = py + panelH - 60;
 
-    // DECLINE button
     const declineBg = this.add.graphics();
     declineBg.fillStyle(0x666666);
     declineBg.fillRoundedRect(0, 0, btnW, 44, 8);
@@ -1393,7 +1832,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     const declineBtn = this.add.container(px + 5, btnY, [declineBg, declineText, declineHit]);
     container.add(declineBtn);
 
-    // ACCEPT button
     const acceptBg = this.add.graphics();
     acceptBg.fillStyle(0x9933ff);
     acceptBg.fillRoundedRect(0, 0, btnW, 44, 8);
@@ -1419,9 +1857,8 @@ export class CoinRunnerScene extends Phaser.Scene {
 
     this.challengeActive = true;
     this.challengeTarget = target;
-    this.setCashoutEnabled(false); // Lock cashout!
+    this.setCashoutEnabled(false);
 
-    // Show persistent goal tracker
     const w = GAME_CONFIG.WIDTH;
     this.challengeGoalText = this.add.text(w / 2, 95, `META: ${target}x (0%)`, {
       fontSize: '13px', fontFamily: 'Arial', color: '#ff00ff', fontStyle: 'bold',
@@ -1429,63 +1866,6 @@ export class CoinRunnerScene extends Phaser.Scene {
     }).setOrigin(0.5).setDepth(100);
 
     this.statusText.setText(`Desafio aceito! Chegue em ${target}x!`);
-  }
-
-  private land(): void {
-    this.isOnGround = true;
-    this.velocityY = 0;
-    this.runner.setTexture('runner');
-  }
-
-  private scrollWorld(speed: number): void {
-    // Scroll all segments
-    for (let i = this.segments.length - 1; i >= 0; i--) {
-      const seg = this.segments[i];
-
-      seg.grounds.forEach(g => { if (g.active) g.x -= speed; });
-      seg.platforms.forEach(p => { if (p.sprite.active) p.sprite.x -= speed; });
-      seg.coins.forEach(c => { if (c.sprite.active) c.sprite.x -= speed; });
-      seg.enemies.forEach(e => { if (e.sprite.active) e.sprite.x -= speed; });
-      seg.pipes.forEach(p => {
-        if (p.sprite.active) p.sprite.x -= speed;
-        if (p.piranha?.active) p.piranha.x -= speed;
-      });
-      seg.qblocks.forEach(q => { if (q.sprite.active) q.sprite.x -= speed; });
-      seg.mushrooms.forEach(m => { if (m.active) m.x -= speed; });
-      seg.poisonMushrooms.forEach(m => { if (m.active) m.x -= speed; });
-
-      // Remove off-screen segments
-      const rightmost = Math.max(
-        ...seg.grounds.filter(g => g.active).map(g => g.x + 32),
-        ...seg.platforms.filter(p => p.sprite.active).map(p => p.sprite.x + p.w),
-        0
-      );
-
-      if (rightmost < -100) {
-        seg.grounds.forEach(g => g.destroy());
-        seg.platforms.forEach(p => p.sprite.destroy());
-        seg.coins.forEach(c => c.sprite.destroy());
-        seg.enemies.forEach(e => e.sprite.destroy());
-        seg.pipes.forEach(p => { p.sprite.destroy(); p.piranha?.destroy(); });
-        seg.qblocks.forEach(q => q.sprite.destroy());
-        seg.mushrooms.forEach(m => m.destroy());
-        seg.poisonMushrooms.forEach(m => m.destroy());
-        this.segments.splice(i, 1);
-      }
-    }
-
-    // Clouds parallax
-    for (const cloud of this.clouds) {
-      cloud.x -= speed * 0.3;
-      if (cloud.x < -70) {
-        cloud.x = GAME_CONFIG.WIDTH + 70;
-        cloud.y = Phaser.Math.Between(30, 150);
-      }
-    }
-  }
-
-  private overlap(a: Phaser.GameObjects.Image, b: Phaser.GameObjects.Image, threshX: number, threshY: number): boolean {
-    return Math.abs(a.x - b.x) < threshX && Math.abs(a.y - (b.y)) < threshY;
   }
 
   private changeBet(d: number): void {
@@ -1497,5 +1877,12 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.cashoutBtn.setAlpha(e ? 1 : 0.4);
     const h = this.cashoutBtn.getAt(2) as Phaser.GameObjects.Rectangle;
     if (e) h.setInteractive({ useHandCursor: true }); else h.disableInteractive();
+  }
+
+  shutdown(): void {
+    if (this.worldId) {
+      b2DestroyWorld(this.worldId);
+      this.worldId = null;
+    }
   }
 }
