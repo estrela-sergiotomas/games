@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run dev)",
+      "Bash(grep -rn \"b2World_GetContactEvents\\\\|b2World_GetSensorEvents\\\\|b2World_GetBodyEvents\" /Users/sergiodesouzatomas/Projects/Games/games/node_modules/phaser-box2d/src/*.js)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(ls /Users/sergiodesouzatomas/Projects/Games/games/node_modules/phaser-box2d/*.js /Users/sergiodesouzatomas/Projects/Games/games/node_modules/phaser-box2d/dist/*.js)",
+      "Bash(curl -s http://localhost:3000/games/)",
+      "mcp__playwright__browser_close",
+      "Bash(pkill -f \"chromium|chrome|playwright\")",
+      "Bash(lsof -i :3003)",
+      "Bash(git add package.json package-lock.json src/scenes/CoinRunnerScene.ts src/scenes/BootScene.ts src/utils/RunnerPhysics.ts src/types/ vite.config.ts docs/index.html docs/assets/RunnerSettingsPanel-DLiB71Kp.js docs/assets/index-DW03FrH2.js)",
+      "Bash(git rm docs/assets/RunnerSettingsPanel-BGwCzT77.js docs/assets/index-DajoVYF7.js)",
+      "Bash(git push)"
+    ]
+  }
+}
