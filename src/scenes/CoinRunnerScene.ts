@@ -641,6 +641,7 @@ export class CoinRunnerScene extends Phaser.Scene {
   private startJump(): void {
     if (!this.isOnGround || this.isDead) return;
     this.isOnGround = false;
+    this.setCashoutEnabled(false);
     // Start with minimum jump force
     this.velocityY = this.JUMP_FORCE * this.MIN_JUMP_FORCE_RATIO;
     this.jumpHeld = true;
@@ -1435,6 +1436,9 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.isOnGround = true;
     this.velocityY = 0;
     this.runner.setTexture('runner');
+    if (!this.challengeActive && !this.isDead && (this.phase === 'running' || this.phase === 'tutorial')) {
+      this.setCashoutEnabled(true);
+    }
   }
 
   private scrollWorld(speed: number): void {
