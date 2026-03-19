@@ -385,11 +385,8 @@ export class CoinRunnerScene extends Phaser.Scene {
     if (Math.random() < 0.3) {
       const qx = segStartX + Phaser.Math.Between(30, segLen - 30);
       const qy = this.groundY - Phaser.Math.Between(55, 75);
-      // Base 5% + exponential increase: doubles every 8 segments, capped at 60%
-      const challengeChance = Math.min(0.6,
-        RunnerSettings.magicBlockChance + (this.challengesCompleted * 0.05) + Math.pow(1.09, this.segmentCount) * 0.005
-      );
-      const isMagic = Math.random() < challengeChance;
+      // Fixed 30% chance for magic challenge blocks
+      const isMagic = Math.random() < 0.3;
       const tex = isMagic ? 'magic_block' : 'qblock';
       const qblock = this.add.image(qx, qy, tex).setScale(1.4).setDepth(12);
       if (isMagic) {
@@ -1000,8 +997,8 @@ export class CoinRunnerScene extends Phaser.Scene {
     if (this.challengeActive && this.currentMultiplier >= this.challengeTarget) {
       this.challengeActive = false;
       this.challengesCompleted++;
-      // Coins now give 0.01x * challengeTarget (e.g. target 5x → coins give 0.05x each)
-      this.coinMultiplierBonus = this.challengeTarget;
+      // Coins now give multiplierPerCoin * currentMultiplier (e.g. at 2.0x → coins give 0.02x each)
+      this.coinMultiplierBonus = this.currentMultiplier;
       this.setCashoutEnabled(true);
       if (this.challengeGoalText) {
         this.challengeGoalText.setText('META ATINGIDA!').setColor('#00ff00');
@@ -1320,13 +1317,10 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.frozen = true;
     const w = GAME_CONFIG.WIDTH;
 
-    // Calculate challenge target: next round number above current multiplier
-    let target: number;
-    if (this.currentMultiplier < 2) target = 5;
-    else if (this.currentMultiplier < 5) target = 10;
-    else if (this.currentMultiplier < 10) target = 20;
-    else if (this.currentMultiplier < 20) target = 30;
-    else target = Math.ceil(this.currentMultiplier / 10) * 10 + 10;
+    // If challenge already active, base target on current challenge target; otherwise on current multiplier
+    const base = this.challengeActive ? this.challengeTarget : this.currentMultiplier;
+    const target = Math.round(base * 1.5 * 10) / 10;
+    const isExtending = this.challengeActive;
 
     const container = this.add.container(0, 0).setDepth(400);
     this.challengeUI = container;
@@ -1346,21 +1340,25 @@ export class CoinRunnerScene extends Phaser.Scene {
     const panel = this.add.graphics();
     panel.fillStyle(0x1a0a3e);
     panel.fillRoundedRect(px, py, panelW, panelH, 16);
-    panel.lineStyle(3, 0x9933ff);
+    panel.lineStyle(3, isExtending ? 0xff6600 : 0x9933ff);
     panel.strokeRoundedRect(px, py, panelW, panelH, 16);
     container.add(panel);
 
     // Star burst effect
-    const star = this.add.text(w / 2, py + 30, '★ DESAFIO ★', {
+    const title = isExtending ? '★ NOVO DESAFIO ★' : '★ DESAFIO ★';
+    const star = this.add.text(w / 2, py + 30, title, {
       fontSize: '22px', fontFamily: 'Arial', color: '#ffd700', fontStyle: 'bold',
     }).setOrigin(0.5);
     container.add(star);
     this.tweens.add({ targets: star, scaleX: 1.1, scaleY: 1.1, duration: 500, yoyo: true, repeat: -1 });
 
     // Challenge description with reward info
-    const rewardValue = (RunnerSettings.multiplierPerCoin * target).toFixed(2);
-    const desc = this.add.text(w / 2, py + 60, `Alcance a meta e suas moedas\npassam a valer ${rewardValue}x cada!`, {
-      fontSize: '13px', fontFamily: 'Arial', color: '#ccccff',
+    const rewardValue = (RunnerSettings.multiplierPerCoin * target).toFixed(3);
+    const descMsg = isExtending
+      ? `Desafio ativo! Estenda a meta para ${target}x\ne moedas passam a valer ${rewardValue}x cada!`
+      : `Alcance ${target}x e suas moedas\npassam a valer ${rewardValue}x cada!`;
+    const desc = this.add.text(w / 2, py + 60, descMsg, {
+      fontSize: '13px', fontFamily: 'Arial', color: isExtending ? '#ffcc88' : '#ccccff',
       align: 'center',
     }).setOrigin(0.5);
     container.add(desc);
@@ -1373,7 +1371,10 @@ export class CoinRunnerScene extends Phaser.Scene {
     this.tweens.add({ targets: targetText, scaleX: 1.05, scaleY: 1.05, duration: 800, yoyo: true, repeat: -1 });
 
     // Current vs target
-    const currentInfo = this.add.text(w / 2, py + 150, `Atual: ${this.currentMultiplier.toFixed(2)}x → Meta: ${target}x`, {
+    const statusLabel = isExtending
+      ? `Meta atual: ${this.challengeTarget}x → Nova meta: ${target}x`
+      : `Atual: ${this.currentMultiplier.toFixed(2)}x → Meta: ${target}x`;
+    const currentInfo = this.add.text(w / 2, py + 150, statusLabel, {
       fontSize: '12px', fontFamily: 'Arial', color: '#aaaaaa',
     }).setOrigin(0.5);
     container.add(currentInfo);
