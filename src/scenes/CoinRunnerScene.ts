@@ -572,10 +572,8 @@ export class CoinRunnerScene extends Phaser.Scene {
 
   private createBottomBar(w: number, h: number): void {
     const y = h - 40;
-    const btnW = (w - 40) / 3;
-    this.makeBtn(10, y, btnW, 32, 'MENU', 0x444444, () => this.scene.start('MenuScene'), '12px');
-    this.makeBtn(15 + btnW, y, btnW, 32, 'AVIATORE', 0x4ecdc4, () => this.scene.start('CrashScene'), '12px');
-    this.makeBtn(20 + btnW * 2, y, btnW, 32, 'CONFIG', 0x8b4513, () => this.openSettings(), '12px');
+    const btnW = w - 20;
+    this.makeBtn(10, y, btnW, 32, 'CONFIG', 0x8b4513, () => this.openSettings(), '12px');
   }
 
   private settingsPanel?: import('../ui/RunnerSettingsPanel').RunnerSettingsPanel;

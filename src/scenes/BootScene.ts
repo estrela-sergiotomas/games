@@ -21,6 +21,6 @@ export class BootScene extends Phaser.Scene {
     particleGfx.generateTexture('particle', 8, 8);
     particleGfx.destroy();
 
-    this.scene.start('MenuScene');
+    this.scene.start('CoinRunnerScene');
   }
 }
